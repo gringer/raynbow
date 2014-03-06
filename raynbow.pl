@@ -152,13 +152,13 @@ sub getContigLengths{
   return($contigLengths);
 }
 
-=head2 getFragmentSize(index,left,right)
+=head2 getFragmentSize(nParallel,index,left,right,directory)
 
 Carries out a Bowtie2 mapping of I<left> and I<right> reads against
 I<index>, using a small subset of the reads to determine mean fragment
-size. Currently the first 10,000 concordant reads are sampled. This
-number was chosen based on data from a single run using
-trimmomatic-trimmed reads from a bacterial genome.
+size. Only the first 10,000 concordant reads are sampled. This number
+was chosen based on data from a single run using trimmomatic-trimmed
+reads from a bacterial genome.
 
 =cut
 
@@ -181,7 +181,6 @@ sub getFragmentSize{
                   "-p",$nParallel,
                   "-I","0",
                   "-X","10000");
-  my $lines = 0;
   my $fragTotal = 0;
   my $fragProportion = -1;
   $| = 1; # force autoflush
@@ -203,6 +202,10 @@ sub getFragmentSize{
       }
     }
   }
+  close($wtr);
+  close($sout);
+  close($serr);
+  waitpid($pid, 0);
   $| = 0; # disable autoflush
   printf("\r[".("x" x 50)."] ");
   @fragLengths = sort({$a <=> $b} @fragLengths);
@@ -212,15 +215,64 @@ sub getFragmentSize{
     $MAD += abs($medSize - $_);
   }
   $MAD = $MAD / scalar(@fragLengths);
-  close($sout);
-  waitpid($pid, 0);
   my $child_exit_status = $? >> 8;
-  close($wtr);
-  close($sout);
-  close($serr);
   printf("done [size: %d, MAD: %d]\n", $medSize, $MAD);
   return(($medSize - $MAD, $medSize + $MAD));
 }
+
+=head2 removeInternalReads(nParallel,fragMin,fragMax,index,left,right,directory)
+
+Carries out a Bowtie2 mapping of I<left> and I<right> reads against
+I<index>, removing fragments that sit entirely within a contig (left
+position greater than one fragment length from the start, and right
+position greater than one fragment length from the end).
+
+=cut
+
+sub filterInternalReads{
+  my ($nParallel, $fragMin, $fragMax, $indexBase,
+      $leftReads, $rightReads, $directory) = @_;
+  printf("Removing internal concordant reads from '%s' and '%s':\n",
+         preDotted($leftReads), preDotted($rightReads));
+  my ($wtr,$sout,$serr);
+  my @fragLengths;
+  use Symbol 'gensym'; $serr = gensym;
+  # run Bowtie2, piping STDOUT to $sout and STDERR to $serr
+  my $pid = open3($wtr, $sout, $serr,
+                  "bowtie2",
+                  "-x",$indexBase,
+                  "-1",$leftReads,
+                  "-2",$rightReads,
+                  "-p",$nParallel,
+                  "-I",$fragMin,
+                  "-X",$fragMax);
+  my $readsProcessed = 0;
+  my $readsFiltered = 0;
+  my $readsIncluded = 0;
+  $| = 1; # force autoflush
+  printf("%d reads processed [%d filtered, %d included]... ",
+        $readsProcessed, $readsFiltered, $readsIncluded);
+  while(<$sout>){
+    if(/^[^@]/){
+      my @F = split(/\t/, $_, 12);
+      # filter out internal concordant reads
+      ## <TODO>
+      if(($readsProcessed % 10000) == 0){
+        printf("\r%d reads processed [%d filtered, %d included]... ",
+               $readsProcessed, $readsFiltered, $readsIncluded);
+      }
+    }
+  }
+  close($wtr);
+  close($sout);
+  close($serr);
+  waitpid($pid, 0);
+  $| = 0; # disable autoflush
+  printf("\r%d reads processed [%d filtered, %d included]... ",
+         $readsProcessed, $readsFiltered, $readsIncluded);
+  print("done");
+}
+
 
 =head2 doMapping(index,left,right)
 
