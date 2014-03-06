@@ -99,19 +99,76 @@ sub makeBT2Index{
   printf("Generating index from contig file '%s'... ",
          preDotted($contigFile));
   my $indexBase = "$outDir/".basename($contigFile);
-  $indexBase =~ s/\..*?$/.index/;
+  $indexBase =~ s/\.[^\.]+?$/.index/;
   my ($wtr,$sout,$serr);
   use Symbol 'gensym'; $serr = gensym;
   my $pid = open3($wtr, $sout, $serr,
                   "bowtie2-build",$contigFile, $indexBase);
   waitpid($pid, 0);
+  my $child_exit_status = $? >> 8;
+  close($wtr);
+  close($sout);
+  close($serr);
+  print("done [created '$indexBase']");
+  return($indexBase);
+}
+
+=head2 getContigLengths(baseName)
+
+Retrieve contig lengths from the bowtie index with base I<baseName>.
+
+=cut
+
+sub getContigLengths{
+  my ($indexBase) = @_;
+  printf("Retrieving index lengths from '%s'... ",
+         preDotted($indexBase));
+  my ($wtr,$sout,$serr);
+  use Symbol 'gensym'; $serr = gensym;
+  my $contigLengths = {};
+  my $pid = open3($wtr, $sout, $serr,
+                  "bowtie2-inspect","-s",$indexBase);
+  while(<$sout>){
+    if(/^Sequence-/){
+      chomp;
+      my @F = split(/\t/, $_);
+      $contigLengths->{$F[1]} = $F[2];
+    }
+  }
+  waitpid($pid, 0);
+  my $child_exit_status = $? >> 8;
+  close($wtr);
+  close($sout);
+  close($serr);
+  printf("done [found %d contigs]\n", scalar(keys(%{$contigLengths})));
+  return($contigLengths);
+}
+
+=head2 doMapping(index,left,right)
+
+Carries out a Bowtie2 mapping of I<left> and I<right> reads against I<index>.
+
+=cut
+
+sub doMapping{
+  my ($indexBase, $leftReads, $rightReads, $directory) = @_;
+  printf("Mapping reads from '%s' and '%s'... ",
+         preDotted($leftReads), preDotted($rightReads));
+  my ($wtr,$sout,$serr);
+  use Symbol 'gensym'; $serr = gensym;
+  my $pid = open3($wtr, $sout, $serr,
+                  "bowtie2","--version");
+  while(<$sout>){
+    printf("%s",$_);
+  }
+  waitpid($pid, 0);
+  my $child_exit_status = $? >> 8;
   close($wtr);
   close($sout);
   close($serr);
   print("done");
-  return($indexBase);
+  return(0);
 }
-
 
 
 my $options =
@@ -178,7 +235,10 @@ $\ = $/; # make print add line break
 
 mkdir($options->{"outDir"});
 
-makeBT2Index($options->{"contigFile"}, $options->{"outDir"});
+my $indexBase = makeBT2Index($options->{"contigFile"}, $options->{"outDir"});
+my $contigLengths = getContigLengths($indexBase);
+
+doMapping($indexBase, $options->{"leftReads"}, $options->{"rightReads"});
 
 =head1 AUTHOR
 
