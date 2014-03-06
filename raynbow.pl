@@ -185,13 +185,13 @@ sub getFragmentSize{
   my $fragTotal = 0;
   my $fragProportion = -1;
   $| = 1; # force autoflush
-  printf("[".(" " x 50)."] ");
+  printf("[".(" " x 10)."] ");
   while(@fragLengths < $fragLimit){
     $_ = <$sout>;
-    if(int(scalar(@fragLengths) * 100 / $fragLimit) > $fragProportion){
-      $fragProportion = int(scalar(@fragLengths) * 50 / $fragLimit);
+    if(int(scalar(@fragLengths) * 10 / $fragLimit) > $fragProportion){
+      $fragProportion = int(scalar(@fragLengths) * 10 / $fragLimit);
       printf("\r[%s%s]",
-            ("x" x $fragProportion), (" " x (50-$fragProportion)));
+            ("x" x $fragProportion), (" " x (10-$fragProportion)));
     }
     if(/^[^@]/){
       my @F = split(/\t/, $_, 12);
@@ -208,7 +208,7 @@ sub getFragmentSize{
   close($serr);
   waitpid($pid, 0);
   $| = 0; # disable autoflush
-  printf("\r[".("x" x 50)."] ");
+  printf("\r[".("x" x 10)."] ");
   @fragLengths = sort({$a <=> $b} @fragLengths);
   my $medSize = @fragLengths[int(scalar(@fragLengths) / 2)];
   my $MAD = 0;
@@ -255,8 +255,8 @@ sub removeInternalReads{
   printf("%d reads processed [%d filtered, %d included]... ",
         $readsProcessed, $readsFiltered, $readsIncluded);
   my $outBase = "$directory/preflight_filtered";
-  my $outFileL = new IO::Compress::Gzip("$outBase_R1.fastq.gz");
-  my $outFileR = new IO::Compress::Gzip("$outBase_R2.fastq.gz");
+  my $outFileL = new IO::Compress::Gzip("${outBase}_R1.fastq.gz");
+  my $outFileR = new IO::Compress::Gzip("${outBase}_R2.fastq.gz");
   while(<$sout>){
     if(/^[^@]/){
       my @F = split(/\t/, $_, 12);
@@ -265,11 +265,11 @@ sub removeInternalReads{
       my $outReadFile = ($F[1] & 0x40) ? $outFileL : $outFileR;
       # filter out internal concordant reads
       if(($F[1] & 0x02) && ($F[6] eq "=")){
-          my $leftEnd = $RC ? $F[3] : $F[7];
-          my $rightEnd = $leftEnd + $F[8];
+          my $leftEnd = ($F[8] > 0) ? $F[3] : $F[7];
+          my $rightEnd = $leftEnd + abs($F[8]);
           my $contigEnd = $contigLengths->{$F[2]};
-          $filter = ($leftEnd <= $fragMax) || 
-              (($contigEnd - $rightEnd) <= $fragMax);
+          $filter = (($leftEnd >= $fragMax) &&
+              (($contigEnd - $rightEnd) >= $fragMax));
       }
       $readsProcessed++;
       if($filter){
@@ -295,7 +295,7 @@ sub removeInternalReads{
   printf("\r%d reads processed [%d filtered, %d included]... ",
          $readsProcessed, $readsFiltered, $readsIncluded);
   print("done");
-  return(("$outBase_R1.fastq.gz","$outBase_R1.fastq.gz"));
+  return(("${outBase}_R1.fastq.gz","${outBase}_R2.fastq.gz", $readsIncluded));
 }
 
 
@@ -412,6 +412,13 @@ if($options->{"fragMin"} eq "guess"){
   printf("Using pre-defined fragment range of [%d,%d]bp\n",
          $options->{"fragMin"},$options->{"fragMax"});
 }
+
+my ($newLeft, $newRight, $newReadCount) =
+  removeInternalReads($options->{"numCPUs"},
+                      $options->{"fragMin"},$options->{"fragMax"},
+                      $indexBase, $contigLengths,
+                      $options->{"leftReads"},$options->{"rightReads"},
+                      $options->{"outDir"});
 
 doMapping($indexBase, $options->{"leftReads"}, $options->{"rightReads"});
 
