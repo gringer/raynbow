@@ -42,13 +42,21 @@ Right reads (can be comma-separated for multiple files)
 
 Output directory (default 'out_raynbow')
 
+=item B<-p>
+
+Number of parallel processing threads (default 2)
+
 =item B<-n>
 
 Number of iterations to run (default is to keep going until no change)
 
-=item B<-fs>
+=item B<-I>
 
-Fragment size (default guesses from initial mapping)
+Minimum fragment size (default guesses from initial mapping)
+
+=item B<-X>
+
+Maximum fragment size (default guesses from initial mapping)
 
 =back
 
@@ -144,6 +152,76 @@ sub getContigLengths{
   return($contigLengths);
 }
 
+=head2 getFragmentSize(index,left,right)
+
+Carries out a Bowtie2 mapping of I<left> and I<right> reads against
+I<index>, using a small subset of the reads to determine mean fragment
+size. Currently the first 10,000 concordant reads are sampled. This
+number was chosen based on data from a single run using
+trimmomatic-trimmed reads from a bacterial genome.
+
+=cut
+
+sub getFragmentSize{
+  my ($nParallel, $indexBase, $leftReads, $rightReads, $directory) = @_;
+  my $fragLimit = 10000;
+  printf("Estimating fragment size using first $fragLimit concordant ".
+         "reads from '%s' and '%s':\n",
+         preDotted($leftReads), preDotted($rightReads));
+  my ($wtr,$sout,$serr);
+  my @fragLengths;
+  use Symbol 'gensym'; $serr = gensym;
+  # run Bowtie2, piping STDOUT to $sout and STDERR to $serr
+  # set fragment size range to 0~10,000, assuming sequencing < 10kbp fragments
+  my $pid = open3($wtr, $sout, $serr,
+                  "bowtie2",
+                  "-x",$indexBase,
+                  "-1",$leftReads,
+                  "-2",$rightReads,
+                  "-p",$nParallel,
+                  "-I","0",
+                  "-X","10000");
+  my $lines = 0;
+  my $fragTotal = 0;
+  my $fragProportion = -1;
+  $| = 1; # force autoflush
+  printf("[".(" " x 50)."] ");
+  while(@fragLengths < $fragLimit){
+    $_ = <$sout>;
+    if(int(scalar(@fragLengths) * 100 / $fragLimit) > $fragProportion){
+      $fragProportion = int(scalar(@fragLengths) * 50 / $fragLimit);
+      printf("\r[%s%s]",
+            ("x" x $fragProportion), (" " x (50-$fragProportion)));
+    }
+    if(/^[^@]/){
+      my @F = split(/\t/, $_, 12);
+      # only record concordant reads to the same contig with positive
+      # fragment size calculations
+      if((($F[1] & 0x02) == 0x02) && ($F[6] eq "=") && ($F[8] > 0)){
+        $fragTotal += $F[8];
+        push(@fragLengths, $F[8]);
+      }
+    }
+  }
+  $| = 0; # disable autoflush
+  printf("\r[".("x" x 50)."] ");
+  @fragLengths = sort({$a <=> $b} @fragLengths);
+  my $medSize = @fragLengths[int(scalar(@fragLengths) / 2)];
+  my $MAD = 0;
+  foreach (@fragLengths){
+    $MAD += abs($medSize - $_);
+  }
+  $MAD = $MAD / scalar(@fragLengths);
+  close($sout);
+  waitpid($pid, 0);
+  my $child_exit_status = $? >> 8;
+  close($wtr);
+  close($sout);
+  close($serr);
+  printf("done [size: %d, MAD: %d]\n", $medSize, $MAD);
+  return(($medSize - $MAD, $medSize + $MAD));
+}
+
 =head2 doMapping(index,left,right)
 
 Carries out a Bowtie2 mapping of I<left> and I<right> reads against I<index>.
@@ -173,18 +251,21 @@ sub doMapping{
 
 my $options =
   {
-   "fragSize" => "guess",
+   "fragMin" => "guess",
    "iterationLimit" => -1,
+   "numCPUs" => 2,
    "outDir" => "out_raynbow",
 };
 
 GetOptions($options,
-           'fragSize|fs=i',
+           'fragMin|I=i',
+           'fragMax|X=i',
            'iterationLimit|n=i',
            'contigFile|c=s',
            'leftReads|1=s',
            'rightReads|2=s',
            'outDir|o=s',
+           'numCPUs|p=i',
 ) or
   pod2usage(1);
 
@@ -229,6 +310,12 @@ foreach my $prog ("bowtie2","Ray"){
   }
 }
 
+if(($options->{"fragMin"} ne "guess") && (!$options->{"fragMax"})){
+  pod2usage("Error: both minimum (-I) and maximum (-X) fragment size ".
+            "must be specified");
+}
+
+
 $\ = $/; # make print add line break
 
 ## Program meat begins here
@@ -237,6 +324,17 @@ mkdir($options->{"outDir"});
 
 my $indexBase = makeBT2Index($options->{"contigFile"}, $options->{"outDir"});
 my $contigLengths = getContigLengths($indexBase);
+
+if($options->{"fragMin"} eq "guess"){
+  ($options->{"fragMin"},
+   $options->{"fragMax"}) = getFragmentSize($options->{"numCPUs"},
+                                           $indexBase,
+                                           $options->{"leftReads"},
+                                           $options->{"rightReads"});
+} else {
+  printf("Using pre-defined fragment range of [%d,%d]bp\n",
+         $options->{"fragMin"},$options->{"fragMax"});
+}
 
 doMapping($indexBase, $options->{"leftReads"}, $options->{"rightReads"});
 
