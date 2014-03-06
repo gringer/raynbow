@@ -7,6 +7,7 @@ use Pod::Usage; ## uses pod documentation in usage code
 use Getopt::Long qw(:config auto_version auto_help);
 use File::Basename; ## for parsing file names
 use IPC::Open3;
+use IO::Compress::Gzip qw(gzip $GzipError);
 
 our $VERSION = "0.01";
 
@@ -220,7 +221,8 @@ sub getFragmentSize{
   return(($medSize - $MAD, $medSize + $MAD));
 }
 
-=head2 removeInternalReads(nParallel,fragMin,fragMax,index,left,right,directory)
+=head2 removeInternalReads(nParallel,fragMin,fragMax,
+    index,contigLengths,left,right,directory)
 
 Carries out a Bowtie2 mapping of I<left> and I<right> reads against
 I<index>, removing fragments that sit entirely within a contig (left
@@ -229,9 +231,9 @@ position greater than one fragment length from the end).
 
 =cut
 
-sub filterInternalReads{
+sub removeInternalReads{
   my ($nParallel, $fragMin, $fragMax, $indexBase,
-      $leftReads, $rightReads, $directory) = @_;
+      $contigLengths, $leftReads, $rightReads, $directory) = @_;
   printf("Removing internal concordant reads from '%s' and '%s':\n",
          preDotted($leftReads), preDotted($rightReads));
   my ($wtr,$sout,$serr);
@@ -252,11 +254,31 @@ sub filterInternalReads{
   $| = 1; # force autoflush
   printf("%d reads processed [%d filtered, %d included]... ",
         $readsProcessed, $readsFiltered, $readsIncluded);
+  my $outBase = "$directory/preflight_filtered";
+  my $outFileL = new IO::Compress::Gzip("$outBase_R1.fastq.gz");
+  my $outFileR = new IO::Compress::Gzip("$outBase_R2.fastq.gz");
   while(<$sout>){
     if(/^[^@]/){
       my @F = split(/\t/, $_, 12);
+      my $filter = 0; # false
+      my $RC = ($F[1] & 0x10);
+      my $outReadFile = ($F[1] & 0x40) ? $outFileL : $outFileR;
       # filter out internal concordant reads
-      ## <TODO>
+      if(($F[1] & 0x02) && ($F[6] eq "=")){
+          my $leftEnd = $RC ? $F[3] : $F[7];
+          my $rightEnd = $leftEnd + $F[8];
+          my $contigEnd = $contigLengths->{$F[2]};
+          $filter = ($leftEnd <= $fragMax) || 
+              (($contigEnd - $rightEnd) <= $fragMax);
+      }
+      $readsProcessed++;
+      if($filter){
+          $readsFiltered++;
+      } else {
+          $readsIncluded++;
+          printf($outReadFile "@%s\n%s\n+\n%s\n",
+              $F[0],$F[9],$F[10]);
+      }
       if(($readsProcessed % 10000) == 0){
         printf("\r%d reads processed [%d filtered, %d included]... ",
                $readsProcessed, $readsFiltered, $readsIncluded);
@@ -266,11 +288,14 @@ sub filterInternalReads{
   close($wtr);
   close($sout);
   close($serr);
+  close($outFileL);
+  close($outFileR);
   waitpid($pid, 0);
   $| = 0; # disable autoflush
   printf("\r%d reads processed [%d filtered, %d included]... ",
          $readsProcessed, $readsFiltered, $readsIncluded);
   print("done");
+  return(("$outBase_R1.fastq.gz","$outBase_R1.fastq.gz"));
 }
 
 
