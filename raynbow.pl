@@ -9,7 +9,8 @@ use File::Basename; ## for parsing file names
 use IPC::Open3;
 use IO::Compress::Gzip qw(gzip $GzipError);
 
-our $VERSION = "0.01";
+our $VERSION = "0.1";
+our $DEBUG = 0; # reduces the length of some time-consuming tasks
 
 =head1 NAME
 
@@ -105,7 +106,7 @@ Generates a Bowtie2 index from I<file>, placing the index in I<directory>.
 
 sub makeBT2Index{
   my ($contigFile, $outDir) = @_;
-  printf("Generating index from contig file '%s'... ",
+  printf(STDERR "Generating index from contig file '%s'... ",
          preDotted($contigFile));
   my $indexBase = "$outDir/".basename($contigFile);
   $indexBase =~ s/\.[^\.]+?$/.index/;
@@ -118,7 +119,7 @@ sub makeBT2Index{
   close($wtr);
   close($sout);
   close($serr);
-  print("done [created '$indexBase']");
+  print(STDERR "done [created '$indexBase']\n");
   return($indexBase);
 }
 
@@ -130,7 +131,7 @@ Retrieve contig lengths from the bowtie index with base I<baseName>.
 
 sub getContigLengths{
   my ($indexBase) = @_;
-  printf("Retrieving index lengths from '%s'... ",
+  printf(STDERR "Retrieving index lengths from '%s'... ",
          preDotted($indexBase));
   my ($wtr,$sout,$serr);
   use Symbol 'gensym'; $serr = gensym;
@@ -149,7 +150,8 @@ sub getContigLengths{
   close($wtr);
   close($sout);
   close($serr);
-  printf("done [found %d contigs]\n", scalar(keys(%{$contigLengths})));
+  printf(STDERR "done [found %d contigs]\n",
+         scalar(keys(%{$contigLengths})));
   return($contigLengths);
 }
 
@@ -165,9 +167,9 @@ reads from a bacterial genome.
 
 sub getFragmentSize{
   my ($nParallel, $indexBase, $leftReads, $rightReads, $directory) = @_;
-  my $fragLimit = 10000;
-  printf("Estimating fragment size using first $fragLimit concordant ".
-         "reads from '%s' and '%s':\n",
+  my $fragLimit = ($DEBUG?1000:10000);
+  printf(STDERR "Estimating fragment size using first $fragLimit ".
+         "concordant reads from '%s' and '%s':\n",
          preDotted($leftReads), preDotted($rightReads));
   my ($wtr,$sout,$serr);
   my @fragLengths;
@@ -184,13 +186,12 @@ sub getFragmentSize{
                   "-X","10000");
   my $fragTotal = 0;
   my $fragProportion = -1;
-  $| = 1; # force autoflush
-  printf("[".(" " x 10)."] ");
+  printf(STDERR "[".(" " x 10)."] ");
   while(@fragLengths < $fragLimit){
     $_ = <$sout>;
     if(int(scalar(@fragLengths) * 10 / $fragLimit) > $fragProportion){
       $fragProportion = int(scalar(@fragLengths) * 10 / $fragLimit);
-      printf("\r[%s%s]",
+      printf(STDERR "\r[%s%s]",
             ("x" x $fragProportion), (" " x (10-$fragProportion)));
     }
     if(/^[^@]/){
@@ -207,8 +208,7 @@ sub getFragmentSize{
   close($sout);
   close($serr);
   waitpid($pid, 0);
-  $| = 0; # disable autoflush
-  printf("\r[".("x" x 10)."] ");
+  printf(STDERR "\r[".("x" x 10)."] ");
   @fragLengths = sort({$a <=> $b} @fragLengths);
   my $medSize = @fragLengths[int(scalar(@fragLengths) / 2)];
   my $MAD = 0;
@@ -217,7 +217,7 @@ sub getFragmentSize{
   }
   $MAD = $MAD / scalar(@fragLengths);
   my $child_exit_status = $? >> 8;
-  printf("done [size: %d, MAD: %d]\n", $medSize, $MAD);
+  printf(STDERR "done [size: %d, MAD: %d]\n", $medSize, $MAD);
   return(($medSize - $MAD, $medSize + $MAD));
 }
 
@@ -234,7 +234,7 @@ position greater than one fragment length from the end).
 sub removeInternalReads{
   my ($nParallel, $fragMin, $fragMax, $indexBase,
       $contigLengths, $leftReads, $rightReads, $directory) = @_;
-  printf("Removing internal concordant reads from '%s' and '%s':\n",
+  printf(STDERR "Removing internal concordant reads from '%s' and '%s':\n",
          preDotted($leftReads), preDotted($rightReads));
   my ($wtr,$sout,$serr);
   my @fragLengths;
@@ -251,12 +251,13 @@ sub removeInternalReads{
   my $readsProcessed = 0;
   my $readsFiltered = 0;
   my $readsIncluded = 0;
-  $| = 1; # force autoflush
-  printf("%d reads processed [%d filtered, %d included]... ",
+  printf(STDERR "%d reads processed [%d filtered, %d included]... ",
         $readsProcessed, $readsFiltered, $readsIncluded);
   my $outBase = "$directory/preflight_filtered";
-  my $outFileL = new IO::Compress::Gzip("${outBase}_R1.fastq.gz");
-  my $outFileR = new IO::Compress::Gzip("${outBase}_R2.fastq.gz");
+  my $outFileNameL = "${outBase}_R1.fastq.gz";
+  my $outFileNameR = "${outBase}_R2.fastq.gz";
+  my $outFileL = new IO::Compress::Gzip($outFileNameL);
+  my $outFileR = new IO::Compress::Gzip($outFileNameR);
   while(<$sout>){
     if(/^[^@]/){
       my @F = split(/\t/, $_, 12);
@@ -280,48 +281,145 @@ sub removeInternalReads{
               $F[0],$F[9],$F[10]);
       }
       if(($readsProcessed % 10000) == 0){
-        printf("\r%d reads processed [%d filtered, %d included]... ",
+        printf(STDERR "\r%d reads processed [%d filtered, %d included]... ",
                $readsProcessed, $readsFiltered, $readsIncluded);
+        if($DEBUG && $readsProcessed >= 100000){
+          last;
+        }
       }
     }
   }
   close($wtr);
   close($sout);
   close($serr);
+  waitpid($pid, 0);
   close($outFileL);
   close($outFileR);
-  waitpid($pid, 0);
-  $| = 0; # disable autoflush
-  printf("\r%d reads processed [%d filtered, %d included]... ",
+  printf(STDERR "\r%d reads processed [%d filtered, %d included]... ",
          $readsProcessed, $readsFiltered, $readsIncluded);
-  print("done");
-  return(("${outBase}_R1.fastq.gz","${outBase}_R2.fastq.gz", $readsIncluded));
+  print(STDERR "done\n");
+  return(($outFileNameL, $outFileNameR, $readsIncluded));
 }
 
 
-=head2 doMapping(index,left,right)
+=head2 edgeMap(nParallel,fragMin,fragMax,index,contigLengths,readCount,left,right)
 
-Carries out a Bowtie2 mapping of I<left> and I<right> reads against I<index>.
+Carries out a Bowtie2 mapping of I<left> and I<right> reads against
+I<index>. Reads that map to the edges of the contigs in I<index> are
+kept for later assembly.
 
 =cut
 
-sub doMapping{
-  my ($indexBase, $leftReads, $rightReads, $directory) = @_;
-  printf("Mapping reads from '%s' and '%s'... ",
+sub edgeMap{
+  my ($nParallel, $fragMin, $fragMax, $indexBase,
+      $contigLengths, $numReads, $leftReads, $rightReads, $directory) = @_;
+  printf(STDERR "Mapping reads from '%s' and '%s':\n",
          preDotted($leftReads), preDotted($rightReads));
   my ($wtr,$sout,$serr);
   use Symbol 'gensym'; $serr = gensym;
   my $pid = open3($wtr, $sout, $serr,
-                  "bowtie2","--version");
-  while(<$sout>){
-    printf("%s",$_);
+                  "bowtie2",
+                  "-x",$indexBase,
+                  "-1",$leftReads,
+                  "-2",$rightReads,
+                  "-p",$nParallel,
+                  "-I",$fragMin,
+                  "-X",$fragMax);
+
+  my %attribs = ();
+  my %seqs = ();
+  my %contigIDs = ();
+  my $nextContigID = 0;
+  my $nextSeqID = 0;
+  my $outFileName = "$directory/Ray_input_allcontigs.fastq.gz";
+  my $outFile = new IO::Compress::Gzip($outFileName);
+  my $readsProcessed = 0;
+  my $readsDiscarded = 0;
+  my $readsUsed = 0;
+  printf(STDERR "\r%d reads processed ".
+         "[%d discarded, %d used]... ",
+         $readsProcessed, $readsDiscarded, $readsUsed);
+  if($numReads > 0){
+    printf(STDERR "%d%%", $readsProcessed * 100 / $numReads);
   }
-  waitpid($pid, 0);
-  my $child_exit_status = $? >> 8;
+  while(<$sout>){
+    #     0    1     2     3    4     5     6     7    8   9   10    11
+    # Query,Flag,R1ref,R1pos,mapQ,Cigar,R2ref,R2pos,TLen,Seq,Qual,Other
+    chomp;
+    if(!/^@/){
+      my @F = split(/\t/, $_, 12);
+      my $included = 0; # false
+      my $mapped = !($F[1] & 0x04); # 0x04 -- unmapped
+      my $RC = ($F[1] & 0x10); # 0x10 -- reverse complement match
+      # reverse complement mapping might span the start of the contig
+      # forward mapping might span the end of the contig
+      my $edgeMapped = $mapped &&
+        ($RC ? $F[3] <= $fragMax :
+         ($contigLengths->{$F[2]} - $F[3]) <= $fragMax);
+      my $edgeMappedStr = $edgeMapped ? ($RC?"S":"E") : "-";
+      # printf(STDERR "%s[R%d]: %s [%s,%s,%s]\n",
+      #        $F[0],($attribs{$F[0]}{"seen"})?"2":"1", $edgeMappedStr,
+      #       $F[1],$F[2],$F[3]);
+      if(!$contigIDs{$F[2]}){
+        $contigIDs{$F[2]} = $nextContigID++;
+      }
+      $readsProcessed++;
+      if(!$attribs{$F[0]}{"seen"}){ # this is the first end seen
+        $attribs{$F[0]}{"seen"} = $edgeMappedStr;
+        $attribs{$F[0]}{"ref"} = $F[2];
+        $attribs{$F[0]}{"seq"} = $F[9];
+        $attribs{$F[0]}{"qstr"} = $F[10];
+      } else { # this is the second end seen
+        if($edgeMapped){ # this read is edge mapped
+          # add both reads to file associated with edge for this contig
+          printf($outFile "@%s [%s]\n%s\n+\n%s\n@%s [%s]\n%s\n+\n%s\n",
+                 $nextSeqID++,$contigIDs{$F[2]}.$edgeMappedStr,
+                 $F[9],$F[10],
+                 $nextSeqID++,$contigIDs{$F[2]}.$edgeMappedStr,
+                 $attribs{$F[0]}{"seq"},$attribs{$F[0]}{"qstr"});
+          $included = 1; # true
+        }
+        if($attribs{$F[0]}{"seen"} ne "-"){ # other read is edge mapped
+          my $otherRef = $attribs{$F[0]}{"ref"};
+          my $otherMStr = $attribs{$F[0]}{"seen"};
+          # add both reads to file associated with edge for other contig
+          printf($outFile "@%s [%s]\n%s\n+\n%s\n@%s [%s]\n%s\n+\n%s\n",
+                 $nextSeqID++,$contigIDs{$otherRef}.$otherMStr,
+                 $F[9],$F[10],
+                 $nextSeqID++,$contigIDs{$otherRef}.$otherMStr,
+                 $attribs{$F[0]}{"seq"},$attribs{$F[0]}{"qstr"});
+          $included = 1; # true
+        }
+        delete($attribs{$F[0]});
+        if($included){
+          $readsUsed++;
+        } else {
+          $readsDiscarded++;
+        }
+        if(($readsProcessed % 10000) == 0){
+          printf(STDERR "\r%d reads processed ".
+                 "[%d discarded, %d used]... ",
+                 $readsProcessed, $readsDiscarded, $readsUsed);
+          if($numReads > 0){
+            printf(STDERR "%d%%", $readsProcessed * 100 / $numReads);
+          }
+          if($DEBUG && $readsProcessed >= 100000){
+            last;
+          }
+        }
+      }
+    }
+  }
   close($wtr);
   close($sout);
   close($serr);
-  print("done");
+  waitpid($pid, 0);
+  my $child_exit_status = $? >> 8;
+  close($outFile);
+  printf(STDERR "\r%d reads processed ".
+         "[%d discarded, %d used]... ",
+         $readsProcessed, $readsDiscarded, $readsUsed);
+  print(STDERR "done\n");
   return(0);
 }
 
@@ -392,9 +490,6 @@ if(($options->{"fragMin"} ne "guess") && (!$options->{"fragMax"})){
             "must be specified");
 }
 
-
-$\ = $/; # make print add line break
-
 ## Program meat begins here
 
 mkdir($options->{"outDir"});
@@ -409,7 +504,7 @@ if($options->{"fragMin"} eq "guess"){
                                            $options->{"leftReads"},
                                            $options->{"rightReads"});
 } else {
-  printf("Using pre-defined fragment range of [%d,%d]bp\n",
+  printf(STDERR "Using pre-defined fragment range of [%d,%d]bp\n",
          $options->{"fragMin"},$options->{"fragMax"});
 }
 
@@ -420,7 +515,11 @@ my ($newLeft, $newRight, $newReadCount) =
                       $options->{"leftReads"},$options->{"rightReads"},
                       $options->{"outDir"});
 
-doMapping($indexBase, $options->{"leftReads"}, $options->{"rightReads"});
+edgeMap($options->{"numCPUs"},
+        $options->{"fragMin"},$options->{"fragMax"},
+        $indexBase, $contigLengths, $newReadCount,
+        $newLeft, $newRight,
+        $options->{"outDir"});
 
 =head1 AUTHOR
 
