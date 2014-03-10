@@ -301,8 +301,32 @@ sub removeInternalReads{
   return(($outFileNameL, $outFileNameR, $readsIncluded));
 }
 
+=head2 writeReads(seqs,fileBase)
 
-=head2 edgeMap(nParallel,fragMin,fragMax,index,contigLengths,readCount,left,right)
+Writes reads found in the hash array I<seqs> into separate files,
+using I<fileBase> as a base file name. The actual filename used will
+be I<fileBase>_<contigID>[SE], where contigID is an internal ID used
+to identify a particular contig, and S/E represents reads that overlap
+the start or end of the contig respectively.
+
+=cut
+
+sub writeReads{
+  my ($seqs, $fileBase) = @_;
+  foreach my $parentContig (keys %{$seqs}){
+    if($seqs->{$parentContig}){ # ensure there are actually sequences
+      my $fileName = "${fileBase}_${parentContig}.fastq.gz";
+      my $outFile = new IO::Compress::Gzip($fileName, Append => 1);
+      foreach my $seq (@{$seqs->{$parentContig}}){
+        print($outFile $seq);
+      }
+      close($outFile);
+    }
+  }
+}
+
+
+=head2 edgeMap(nParallel,fragMin,fragMax,index,contigLengths,readCount,left,right,directory)
 
 Carries out a Bowtie2 mapping of I<left> and I<right> reads against
 I<index>. Reads that map to the edges of the contigs in I<index> are
@@ -327,12 +351,10 @@ sub edgeMap{
                   "-X",$fragMax);
 
   my %attribs = ();
-  my %seqs = ();
   my %contigIDs = ();
+  my $seqs = {};
   my $nextContigID = 0;
   my $nextSeqID = 0;
-  my $outFileName = "$directory/Ray_input_allcontigs.fastq.gz";
-  my $outFile = new IO::Compress::Gzip($outFileName);
   my $readsProcessed = 0;
   my $readsDiscarded = 0;
   my $readsUsed = 0;
@@ -361,7 +383,10 @@ sub edgeMap{
       #        $F[0],($attribs{$F[0]}{"seen"})?"2":"1", $edgeMappedStr,
       #       $F[1],$F[2],$F[3]);
       if(!$contigIDs{$F[2]}){
-        $contigIDs{$F[2]} = $nextContigID++;
+        my $contigID = $nextContigID++;
+        $contigIDs{$F[2]} = $contigID;
+        $seqs->{$contigID."S"} = [];
+        $seqs->{$contigID."E"} = [];
       }
       $readsProcessed++;
       if(!$attribs{$F[0]}{"seen"}){ # this is the first end seen
@@ -372,25 +397,33 @@ sub edgeMap{
       } else { # this is the second end seen
         if($edgeMapped){ # this read is edge mapped
           # add both reads to file associated with edge for this contig
-          printf($outFile "@%s [%s]\n%s\n+\n%s\n@%s [%s]\n%s\n+\n%s\n",
-                 $nextSeqID++,$contigIDs{$F[2]}.$edgeMappedStr,
-                 $F[9],$F[10],
-                 $nextSeqID++,$contigIDs{$F[2]}.$edgeMappedStr,
-                 $attribs{$F[0]}{"seq"},$attribs{$F[0]}{"qstr"});
+          push(@{$seqs->{$contigIDs{$otherRef}.$otherMStr}},
+               sprintf("@%s [%s]\n%s\n+\n%s\n@%s [%s]\n%s\n+\n%s\n",
+                       $nextSeqID++,$contigIDs{$F[2]}.$edgeMappedStr,
+                       $F[9],$F[10],
+                       $nextSeqID++,$contigIDs{$F[2]}.$edgeMappedStr,
+                       $attribs{$F[0]}{"seq"},$attribs{$F[0]}{"qstr"}));
           $included = 1; # true
+          $bufferedReads++;
         }
         if($attribs{$F[0]}{"seen"} ne "-"){ # other read is edge mapped
           my $otherRef = $attribs{$F[0]}{"ref"};
           my $otherMStr = $attribs{$F[0]}{"seen"};
           # add both reads to file associated with edge for other contig
-          printf($outFile "@%s [%s]\n%s\n+\n%s\n@%s [%s]\n%s\n+\n%s\n",
-                 $nextSeqID++,$contigIDs{$otherRef}.$otherMStr,
-                 $F[9],$F[10],
-                 $nextSeqID++,$contigIDs{$otherRef}.$otherMStr,
-                 $attribs{$F[0]}{"seq"},$attribs{$F[0]}{"qstr"});
+          push(@{$seqs->{$contigIDs{$otherRef}.$otherMStr}},
+               sprintf("@%s [%s]\n%s\n+\n%s\n@%s [%s]\n%s\n+\n%s\n",
+                       $nextSeqID++,$contigIDs{$otherRef}.$otherMStr,
+                       $F[9],$F[10],
+                       $nextSeqID++,$contigIDs{$otherRef}.$otherMStr,
+                       $attribs{$F[0]}{"seq"},$attribs{$F[0]}{"qstr"}));
           $included = 1; # true
+          $bufferedReads++;
         }
         delete($attribs{$F[0]});
+        if($bufferedReads >= 100){
+          writeReads($seqs, "$directory/Ray_input");
+          $bufferedReads = 0;
+        }
         if($included){
           $readsUsed++;
         } else {
@@ -406,16 +439,16 @@ sub edgeMap{
           if($DEBUG && $readsProcessed >= 100000){
             last;
           }
-        }
-      }
-    }
-  }
+        } # closes ReadsProcessed check
+      } # closes second edge seen
+    } # closes non-comment SAM check
+  } # closes file line read loop
   close($wtr);
   close($sout);
   close($serr);
   waitpid($pid, 0);
   my $child_exit_status = $? >> 8;
-  close($outFile);
+  writeReads($seqs, "$directory/Ray_input");
   printf(STDERR "\r%d reads processed ".
          "[%d discarded, %d used]... ",
          $readsProcessed, $readsDiscarded, $readsUsed);
