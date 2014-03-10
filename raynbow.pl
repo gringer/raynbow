@@ -7,6 +7,7 @@ use Pod::Usage; ## uses pod documentation in usage code
 use Getopt::Long qw(:config auto_version auto_help);
 use File::Basename; ## for parsing file names
 use IPC::Open3;
+use Time::HiRes qw(time);
 use IO::Compress::Gzip qw(gzip $GzipError);
 
 our $VERSION = "0.1";
@@ -106,6 +107,7 @@ Generates a Bowtie2 index from I<file>, placing the index in I<directory>.
 
 sub makeBT2Index{
   my ($contigFile, $outDir) = @_;
+  my $startTime = time;
   printf(STDERR "Generating index from contig file '%s'... ",
          preDotted($contigFile));
   my $indexBase = "$outDir/".basename($contigFile);
@@ -119,7 +121,8 @@ sub makeBT2Index{
   close($wtr);
   close($sout);
   close($serr);
-  print(STDERR "done [created '$indexBase']\n");
+  my $timeDiff = time - $startTime;
+  printf(STDERR "done [created '$indexBase' in %0.1f seconds]\n", $timeDiff);
   return($indexBase);
 }
 
@@ -131,6 +134,7 @@ Retrieve contig lengths from the bowtie index with base I<baseName>.
 
 sub getContigLengths{
   my ($indexBase) = @_;
+  my $startTime = time;
   printf(STDERR "Retrieving index lengths from '%s'... ",
          preDotted($indexBase));
   my ($wtr,$sout,$serr);
@@ -150,8 +154,9 @@ sub getContigLengths{
   close($wtr);
   close($sout);
   close($serr);
-  printf(STDERR "done [found %d contigs]\n",
-         scalar(keys(%{$contigLengths})));
+  my $timeDiff = time - $startTime;
+  printf(STDERR "done [found %d contigs in %0.1f seconds]\n",
+         scalar(keys(%{$contigLengths})), $timeDiff);
   return($contigLengths);
 }
 
@@ -167,6 +172,7 @@ reads from a bacterial genome.
 
 sub getFragmentSize{
   my ($nParallel, $indexBase, $leftReads, $rightReads, $directory) = @_;
+  my $startTime = time;
   my $fragLimit = ($DEBUG?1000:10000);
   printf(STDERR "Estimating fragment size using first $fragLimit ".
          "concordant reads from '%s' and '%s':\n",
@@ -217,7 +223,9 @@ sub getFragmentSize{
   }
   $MAD = $MAD / scalar(@fragLengths);
   my $child_exit_status = $? >> 8;
-  printf(STDERR "done [size: %d, MAD: %d]\n", $medSize, $MAD);
+  my $timeDiff = time - $startTime;
+  printf(STDERR "done [size: %d, MAD: %d, took %0.1f seconds]\n",
+         $medSize, $MAD, $timeDiff);
   return(($medSize - $MAD, $medSize + $MAD));
 }
 
@@ -234,6 +242,7 @@ position greater than one fragment length from the end).
 sub removeInternalReads{
   my ($nParallel, $fragMin, $fragMax, $indexBase,
       $contigLengths, $leftReads, $rightReads, $directory) = @_;
+  my $startTime = time;
   printf(STDERR "Removing internal concordant reads from '%s' and '%s':\n",
          preDotted($leftReads), preDotted($rightReads));
   my ($wtr,$sout,$serr);
@@ -297,21 +306,23 @@ sub removeInternalReads{
   close($outFileR);
   printf(STDERR "\r%d reads processed [%d filtered, %d included]... ",
          $readsProcessed, $readsFiltered, $readsIncluded);
-  print(STDERR "done\n");
+  my $timeDiff = time - $startTime;
+  printf(STDERR "done in %0.1f seconds\n", $timeDiff);
   return(($outFileNameL, $outFileNameR, $readsIncluded));
 }
 
-=head2 writeReads(seqs,fileBase)
+=head2 writeReads(seqs, fileBase)
 
-Writes reads found in the hash array I<seqs> into separate files,
-using I<fileBase> as a base file name. The actual filename used will
-be I<fileBase>_<contigID>[SE], where contigID is an internal ID used
-to identify a particular contig, and S/E represents reads that overlap
-the start or end of the contig respectively.
+Writes reads found in I<seqs> into separate files, using I<fileBase>
+as a base file name. The actual filename used will be
+I<fileBase>_<contigID>[SE].fastq.gz, where contigID is an internal ID
+used to identify a particular contig, and S/E represents reads that
+overlap the start or end of the contig respectively.
 
 =cut
 
 sub writeReads{
+  print(STDERR "\r[Writing reads to contig files...]");
   my ($seqs, $fileBase) = @_;
   foreach my $parentContig (keys %{$seqs}){
     if($seqs->{$parentContig}){ # ensure there are actually sequences
@@ -337,6 +348,7 @@ kept for later assembly.
 sub edgeMap{
   my ($nParallel, $fragMin, $fragMax, $indexBase,
       $contigLengths, $numReads, $leftReads, $rightReads, $directory) = @_;
+  my $startTime = time;
   printf(STDERR "Mapping reads from '%s' and '%s':\n",
          preDotted($leftReads), preDotted($rightReads));
   my ($wtr,$sout,$serr);
@@ -358,6 +370,8 @@ sub edgeMap{
   my $readsProcessed = 0;
   my $readsDiscarded = 0;
   my $readsUsed = 0;
+  my $bufferedReads = 0;
+  my $outFileBase = "$directory/Ray_input";
   printf(STDERR "\r%d reads processed ".
          "[%d discarded, %d used]... ",
          $readsProcessed, $readsDiscarded, $readsUsed);
@@ -397,7 +411,7 @@ sub edgeMap{
       } else { # this is the second end seen
         if($edgeMapped){ # this read is edge mapped
           # add both reads to file associated with edge for this contig
-          push(@{$seqs->{$contigIDs{$otherRef}.$otherMStr}},
+          push(@{$seqs->{$contigIDs{$F[2]}.$edgeMappedStr}},
                sprintf("@%s [%s]\n%s\n+\n%s\n@%s [%s]\n%s\n+\n%s\n",
                        $nextSeqID++,$contigIDs{$F[2]}.$edgeMappedStr,
                        $F[9],$F[10],
@@ -420,8 +434,9 @@ sub edgeMap{
           $bufferedReads++;
         }
         delete($attribs{$F[0]});
-        if($bufferedReads >= 100){
+        if($bufferedReads >= 1000){
           writeReads($seqs, "$directory/Ray_input");
+          $seqs = {}; # clear saved sequence buffer
           $bufferedReads = 0;
         }
         if($included){
@@ -452,7 +467,8 @@ sub edgeMap{
   printf(STDERR "\r%d reads processed ".
          "[%d discarded, %d used]... ",
          $readsProcessed, $readsDiscarded, $readsUsed);
-  print(STDERR "done\n");
+  my $timeDiff = time - $startTime;
+  printf(STDERR "done in %0.1f seconds\n", $timeDiff);
   return(0);
 }
 
