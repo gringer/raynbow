@@ -3,6 +3,7 @@
 use warnings;
 use strict;
 
+use IPC::Open3;
 use IO::Select;
 
 sub indexMatch{
@@ -38,15 +39,19 @@ while(($thingsToDo > 0) || (indexMatch(".",$progress) < $numParallel)){
     foreach my $pNum (indexMatch(".",$progress)){
       $thingsToDo--;
       ${$progress}[$pNum] = "-";
-      my $pid = open(my $pipe, "-|");
+      my ($wtr,$pipe);
+      use Symbol 'gensym'; $pipe = gensym;
+      my $pid = open3($wtr,$pipe,$pipe, "-");
       if($pid == 0){ # fork to a child process
+        close($wtr);
         foreach my $letter ("A".."Z"){
-          print("$pNum:$letter");
+          print(STDERR "$pNum:$letter");
           select(undef,undef,undef, rand(1)); # sleep for up to 1 sec
         }
         close($pipe);
         exit;
       }
+      close($wtr);
       $fhSelector->add($pipe);
     }
   }
