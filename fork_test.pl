@@ -19,7 +19,6 @@ sub indexMatch{
 
 my $numParallel = 10;
 my $progress = [(".") x $numParallel];
-my $handles = [(0) x $numParallel];
 
 my $fhSelector = IO::Select->new();
 
