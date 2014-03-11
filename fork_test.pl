@@ -76,5 +76,5 @@ while(($thingsToDo > 0) || (indexMatch(".",\@progress) < $numParallel)){
          $loop++,join("",@progress),$thingsDone, $totalThings);
 }
 
-printf(STDERR "\rwait step %d for processes... {%s} [%d of %d tasks done]",
+printf(STDERR "\rwait step %d for processes... {%s} [%d of %d tasks done]\n",
        $loop++,join("",@progress),$thingsDone, $totalThings);
