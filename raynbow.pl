@@ -6,9 +6,10 @@ use strict;
 use Pod::Usage; ## uses pod documentation in usage code
 use Getopt::Long qw(:config auto_version auto_help);
 use File::Basename; ## for parsing file names
-use IPC::Open3;
-use Time::HiRes qw(time);
-use IO::Compress::Gzip qw(gzip $GzipError);
+use IPC::Open3; ## for redirecting STDERR from called commands
+use IO::Select; ## for non-blocking communication between threads
+use Time::HiRes qw(time); ## for measuring sub-second time
+use IO::Compress::Gzip qw(gzip $GzipError); ## for gzip output
 
 our $VERSION = "0.1";
 our $DEBUG = 0; # reduces the length of some time-consuming tasks
@@ -60,6 +61,10 @@ Minimum fragment size (default guesses from initial mapping)
 =item B<-X>
 
 Maximum fragment size (default guesses from initial mapping)
+
+=item B<-debug>
+
+Run in debug mode (reduces run time to finish a bit faster)
 
 =back
 
@@ -263,8 +268,8 @@ sub removeInternalReads{
   printf(STDERR "%d reads processed [%d filtered, %d included]... ",
         $readsProcessed, $readsFiltered, $readsIncluded);
   my $outBase = "$directory/preflight_filtered";
-  my $outFileNameL = "${outBase}_R1.fastq.gz";
-  my $outFileNameR = "${outBase}_R2.fastq.gz";
+  my $outFileNameL = "${outBase}_R1.fq.gz";
+  my $outFileNameR = "${outBase}_R2.fq.gz";
   my $outFileL = new IO::Compress::Gzip($outFileNameL);
   my $outFileR = new IO::Compress::Gzip($outFileNameR);
   while(<$sout>){
@@ -315,18 +320,18 @@ sub removeInternalReads{
 
 Writes reads found in I<seqs> into separate files, using I<fileBase>
 as a base file name. The actual filename used will be
-I<fileBase>_<contigID>[SE].fastq.gz, where contigID is an internal ID
+I<fileBase>_<contigID>[SE].fq.gz, where contigID is an internal ID
 used to identify a particular contig, and S/E represents reads that
 overlap the start or end of the contig respectively.
 
 =cut
 
 sub writeReads{
-  print(STDERR "\r[Writing reads to contig files...]");
+  print(STDERR "\r[Writing reads to contig files... ");
   my ($seqs, $fileBase) = @_;
   foreach my $parentContig (keys %{$seqs}){
     if($seqs->{$parentContig}){ # ensure there are actually sequences
-      my $fileName = "${fileBase}_${parentContig}.fastq.gz";
+      my $fileName = "${fileBase}_${parentContig}.fq.gz";
       my $outFile = new IO::Compress::Gzip($fileName, Append => 1);
       foreach my $seq (@{$seqs->{$parentContig}}){
         print($outFile $seq);
@@ -334,6 +339,7 @@ sub writeReads{
       close($outFile);
     }
   }
+  print(STDERR "done]");
 }
 
 
@@ -472,6 +478,113 @@ sub edgeMap{
   return(0);
 }
 
+=head2 indexMatch(matchVal,arrayRef)
+
+Returns a list of the indexes corresponding to entries in I<arrayRef>
+that are equal to I<matchVal>.
+
+=cut
+
+sub indexMatch{
+  my ($matchVal, $aRef) = @_;
+  my $nextIndex = 0;
+  my @matching = ();
+  for(my $i = 0; $i < scalar(@{$aRef}); $i++){
+    if(${$aRef}[$i] eq $matchVal){
+      push(@matching, $i);
+    }
+  }
+  return(@matching);
+}
+
+
+=head2 localRayAssembly(nParallel,directory)
+
+Carry out multiple parallelised Ray assemblies (dynamically allocated)
+on "Ray_input_*.fq.gz" files in I<directory>.
+
+=cut
+
+sub localRayAssembly{
+  my ($nParallel,$directory) = @_;
+  my $startTime = time;
+  printf(STDERR "Carrying out local assemblies:\n");
+
+  my $fhSelector = IO::Select->new();
+  my @progress = (".") x $nParallel;
+  my @outHandle = (0) x $nParallel;
+  my @wtrHandle = (0) x $nParallel;
+
+  # read directory to find suitable files
+  opendir(my $dh, $directory);
+  my @fileList = ();
+  while(readdir($dh)){
+    if(/^Ray_input_[0-9]+[SE].fq.gz$/){
+      push(@fileList, $_);
+    }
+  }
+
+  my $thingsToDo = scalar(@fileList);
+  my $totalThings = $thingsToDo;
+  my $thingsDone = 0;
+  my $nextJobID = 0;
+  printf(STDERR "\r{ %s } [%d of %d tasks]... ",
+         join(" ",@progress),$thingsDone, $totalThings);
+  while (($thingsToDo > 0) || (indexMatch(".",\@progress) < $nParallel)) {
+    if ($thingsToDo > 0) {
+      foreach my $pNum (indexMatch(".",\@progress)) {
+        #printf(STDERR "Creating job %d\n", $nextJobID);
+        $thingsToDo--;
+        $progress[$pNum] = "-";
+        my ($wtr,$stdout, $pipe);
+        my $pid = open3($wtr, $pipe, $pipe, "-");
+        if ($pid == 0) {        # fork to a child process
+          foreach my $letter ("A".."Z") {
+            print("$pNum:$letter\n");
+            print(STDERR "$pNum:$letter\n");
+            select(undef,undef,undef, rand(1)); # sleep for up to 1 sec
+          }
+          close($pipe);
+          close($stdout) if $stdout;
+          close($wtr) if $wtr;
+          exit;
+        }
+        $nextJobID++;
+        $fhSelector->add($pipe);
+      }
+    }
+    select(undef,undef,undef, 0.5); # sleep for 0.5 secs
+    while (my @ready = $fhSelector->can_read(0)) {
+      foreach my $fh (@ready) {
+        my $data = <$fh>;
+        if ($data) {
+          chomp($data);
+          my ($id,$val) = split(/:/, $data);
+          $progress[$id] = $val;
+          if ($val eq "Z") {
+            $fhSelector->remove($fh);
+            close($fh);
+            $progress[$id] = ".";
+            $thingsDone++;
+            printf(STDERR "\r{ %s } [%d of %d tasks]... ",
+                   join(" ",@progress),$thingsDone, $totalThings);
+          }
+        }
+      }
+    }
+    printf(STDERR "\r{ %s } [%d of %d tasks]... ",
+           join(" ",@progress),$thingsDone, $totalThings);
+  }
+  printf(STDERR "\r{ %s } [%d of %d tasks]... ",
+         join(" ",@progress),$thingsDone, $totalThings);
+  my $timeDiff = time - $startTime;
+  printf(STDERR " done in %0.1f seconds]\n", $timeDiff);
+}
+
+####################################################
+# Command line parsing and verification starts here
+####################################################
+
 
 my $options =
   {
@@ -490,8 +603,13 @@ GetOptions($options,
            'rightReads|2=s',
            'outDir|o=s',
            'numCPUs|p=i',
+           'debug!' => \$DEBUG,
 ) or
   pod2usage(1);
+
+if($DEBUG){
+  warn("WARNING: Activating debug mode; results will not be accurate.\n");
+}
 
 if(-e $options->{"outDir"}){
   my $iter = 0;
@@ -539,13 +657,18 @@ if(($options->{"fragMin"} ne "guess") && (!$options->{"fragMax"})){
             "must be specified");
 }
 
-## Program meat begins here
+###############################
+# Program meat starts here
+###############################
 
 mkdir($options->{"outDir"});
 
+## create Bowtie2 index file
 my $indexBase = makeBT2Index($options->{"contigFile"}, $options->{"outDir"});
+## extract contig lengths
 my $contigLengths = getContigLengths($indexBase);
 
+## discover fragment size (or use pre-defined sizes)
 if($options->{"fragMin"} eq "guess"){
   ($options->{"fragMin"},
    $options->{"fragMax"}) = getFragmentSize($options->{"numCPUs"},
@@ -557,6 +680,7 @@ if($options->{"fragMin"} eq "guess"){
          $options->{"fragMin"},$options->{"fragMax"});
 }
 
+## remove internal reads to reduce mapping time
 my ($newLeft, $newRight, $newReadCount) =
   removeInternalReads($options->{"numCPUs"},
                       $options->{"fragMin"},$options->{"fragMax"},
@@ -564,11 +688,15 @@ my ($newLeft, $newRight, $newReadCount) =
                       $options->{"leftReads"},$options->{"rightReads"},
                       $options->{"outDir"});
 
+## begin iteration 1 -- map edges
 edgeMap($options->{"numCPUs"},
         $options->{"fragMin"},$options->{"fragMax"},
         $indexBase, $contigLengths, $newReadCount,
         $newLeft, $newRight,
         $options->{"outDir"});
+
+## locally assemble mapped reads
+localRayAssembly($options->{"numCPUs"}, $options->{"outDir"});
 
 =head1 AUTHOR
 
