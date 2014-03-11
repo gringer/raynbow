@@ -510,10 +510,35 @@ sub localRayAssembly{
   my $startTime = time;
   printf(STDERR "Carrying out local assemblies:\n");
 
+  my $rayKmerLength = 31;
   my $fhSelector = IO::Select->new();
   my @progress = (".") x $nParallel;
-  my @outHandle = (0) x $nParallel;
-  my @wtrHandle = (0) x $nParallel;
+  my %fhMap = ();
+
+  my %stepMappings =
+    (
+     "Network testing" => "A",
+     "Counting sequences to assemble" => "B",
+     "Sequence loading" => "C",
+     "K-mer counting" => "D",
+     "Coverage distribution analysis" => "E",
+     "Graph construction" => "F",
+     "Null edge purging" => "G",
+     "Selection of optimal read markers" => "H",
+     "Detection of assembly seeds" => "I",
+     "Estimation of outer distances for paired reads" => "J",
+     "Bidirectional extension of seeds" => "K",
+     "Merging of redundant paths" => "L",
+     "Generation of contigs" => "M",
+     "Counting sequences to search" => "N",
+     "Graph coloring" => "O",
+     "Counting contig biological abundances" => "P",
+     "Counting sequence biological abundances" => "Q",
+     "Loading taxons" => "R",
+     "Loading tree" => "S",
+     "Processing gene ontologies" => "T",
+     "Computing neighbourhoods" => "Z",
+    );
 
   # read directory to find suitable files
   opendir(my $dh, $directory);
@@ -522,6 +547,9 @@ sub localRayAssembly{
     if(/^Ray_input_[0-9]+[SE].fq.gz$/){
       push(@fileList, $_);
     }
+  }
+  if($DEBUG){
+    @fileList = @fileList[(0..15)];
   }
 
   my $thingsToDo = scalar(@fileList);
@@ -537,18 +565,11 @@ sub localRayAssembly{
         $thingsToDo--;
         $progress[$pNum] = "-";
         my ($wtr,$stdout, $pipe);
-        my $pid = open3($wtr, $pipe, $pipe, "-");
-        if ($pid == 0) {        # fork to a child process
-          foreach my $letter ("A".."Z") {
-            print("$pNum:$letter\n");
-            print(STDERR "$pNum:$letter\n");
-            select(undef,undef,undef, rand(1)); # sleep for up to 1 sec
-          }
-          close($pipe);
-          close($stdout) if $stdout;
-          close($wtr) if $wtr;
-          exit;
-        }
+        my @rayOpts = ("-i", $directory."/".$fileList[$nextJobID],
+                       "-k", $rayKmerLength,
+                       "-o", "$directory/RayOutput.$nextJobID");
+        my $pid = open3($wtr, $pipe, $pipe, 'Ray', @rayOpts);
+        $fhMap{$pipe} = $pNum;
         $nextJobID++;
         $fhSelector->add($pipe);
       }
@@ -559,15 +580,25 @@ sub localRayAssembly{
         my $data = <$fh>;
         if ($data) {
           chomp($data);
-          my ($id,$val) = split(/:/, $data);
-          $progress[$id] = $val;
-          if ($val eq "Z") {
-            $fhSelector->remove($fh);
-            close($fh);
-            $progress[$id] = ".";
-            $thingsDone++;
-            printf(STDERR "\r{ %s } [%d of %d tasks]... ",
-                   join(" ",@progress),$thingsDone, $totalThings);
+          if($data =~ /^Step:\s+(.*)$/){
+            my $step = $1;
+            my $id = $fhMap{$fh};
+            my $val = $progress[$id];
+            if($stepMappings{$step}){
+              $val = $stepMappings{$step};
+            } else {
+              printf(STDERR "[%d] Step: %s\n", $id, $step);
+            }
+            $progress[$id] = $val;
+            if ($val eq "Z") {
+              $fhSelector->remove($fh);
+              delete($fhMap{$fh});
+              close($fh);
+              $progress[$id] = ".";
+              $thingsDone++;
+              printf(STDERR "\r{ %s } [%d of %d tasks]... ",
+                     join(" ",@progress),$thingsDone, $totalThings);
+            }
           }
         }
       }
