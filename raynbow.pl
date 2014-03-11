@@ -330,7 +330,8 @@ sub writeReads{
   print(STDERR "\r[Writing reads to contig files... ");
   my ($seqs, $fileBase) = @_;
   foreach my $parentContig (keys %{$seqs}){
-    if($seqs->{$parentContig}){ # ensure there are actually sequences
+    # ensure there are actually sequences
+    if($seqs->{$parentContig} && @{$seqs->{$parentContig}}){
       my $fileName = "${fileBase}_${parentContig}.fq.gz";
       my $outFile = new IO::Compress::Gzip($fileName, Append => 1);
       foreach my $seq (@{$seqs->{$parentContig}}){
@@ -513,7 +514,10 @@ sub localRayAssembly{
   my $rayKmerLength = 31;
   my $fhSelector = IO::Select->new();
   my @progress = (".") x $nParallel;
+  my $progressChanged = 1; # true
   my %fhMap = ();
+  my $fileData = "";
+  my @dataBuffers = ("") x $nParallel;
 
   my %stepMappings =
     (
@@ -530,13 +534,14 @@ sub localRayAssembly{
      "Bidirectional extension of seeds" => "K",
      "Merging of redundant paths" => "L",
      "Generation of contigs" => "M",
-     "Counting sequences to search" => "N",
-     "Graph coloring" => "O",
-     "Counting contig biological abundances" => "P",
-     "Counting sequence biological abundances" => "Q",
-     "Loading taxons" => "R",
-     "Loading tree" => "S",
-     "Processing gene ontologies" => "T",
+     "Scaffolding of contigs" => "N",
+     "Counting sequences to search" => "O",
+     "Graph coloring" => "P",
+     "Counting contig biological abundances" => "Q",
+     "Counting sequence biological abundances" => "R",
+     "Loading taxons" => "S",
+     "Loading tree" => "T",
+     "Processing gene ontologies" => "U",
      "Computing neighbourhoods" => "Z",
     );
 
@@ -564,6 +569,7 @@ sub localRayAssembly{
         #printf(STDERR "Creating job %d\n", $nextJobID);
         $thingsToDo--;
         $progress[$pNum] = "-";
+        $progressChanged = 1; # true
         my ($wtr,$stdout, $pipe);
         my @rayOpts = ("-i", $directory."/".$fileList[$nextJobID],
                        "-k", $rayKmerLength,
@@ -574,42 +580,60 @@ sub localRayAssembly{
         $fhSelector->add($pipe);
       }
     }
-    select(undef,undef,undef, 0.5); # sleep for 0.5 secs
-    while (my @ready = $fhSelector->can_read(0)) {
+    if (my @ready = $fhSelector->can_read(0.5)) {
       foreach my $fh (@ready) {
-        my $data = <$fh>;
-        if ($data) {
-          chomp($data);
-          if($data =~ /^Step:\s+(.*)$/){
+        my $id = $fhMap{$fh};
+        my $bytesRead = sysread($fh, $fileData, 2048);
+        $fileData = $dataBuffers[$id].$fileData;
+        my @dataLines = split('\n', $fileData);
+        if(($bytesRead == 2048) && (substr($fileData,-1) ne "\n")){
+          $dataBuffers[$id] = $dataLines[$#dataLines];
+          pop(@dataLines);
+        }
+        foreach my $data (@dataLines){
+          if($data && ($data =~ /^Step:\s+(.*)$/)){
             my $step = $1;
-            my $id = $fhMap{$fh};
             my $val = $progress[$id];
             if($stepMappings{$step}){
               $val = $stepMappings{$step};
+              #printf(STDERR "[%d] Step: %s\n", $id, $step);
+              $progress[$id] = $val;
+              $progressChanged = 1; # true
             } else {
               printf(STDERR "[%d] Step: %s\n", $id, $step);
             }
-            $progress[$id] = $val;
             if ($val eq "Z") {
               $fhSelector->remove($fh);
               delete($fhMap{$fh});
               close($fh);
               $progress[$id] = ".";
+              $progressChanged = 1; # true
               $thingsDone++;
-              printf(STDERR "\r{ %s } [%d of %d tasks]... ",
-                     join(" ",@progress),$thingsDone, $totalThings);
             }
+          }
+          if($data && ($data =~ /panic/)){
+            # assume process died for some reason
+            print(STDERR "\n[$id] $data\n");
+            $fhSelector->remove($fh);
+            delete($fhMap{$fh});
+            close($fh);
+            $progress[$id] = ".";
+            $progressChanged = 1; # true
+            $thingsDone++;
           }
         }
       }
     }
-    printf(STDERR "\r{ %s } [%d of %d tasks]... ",
-           join(" ",@progress),$thingsDone, $totalThings);
+    if($progressChanged){
+      printf(STDERR "\r{ %s } [%d of %d tasks]... ",
+             join(" ",@progress),$thingsDone, $totalThings);
+      $progressChanged = 0; # false
+    }
   }
   printf(STDERR "\r{ %s } [%d of %d tasks]... ",
          join(" ",@progress),$thingsDone, $totalThings);
   my $timeDiff = time - $startTime;
-  printf(STDERR " done in %0.1f seconds]\n", $timeDiff);
+  printf(STDERR " done in %0.1f seconds\n", $timeDiff);
 }
 
 ####################################################
