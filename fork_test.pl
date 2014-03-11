@@ -19,7 +19,7 @@ sub indexMatch{
 }
 
 my $numParallel = 10;
-my $progress = [(".") x $numParallel];
+my @progress = (".") x $numParallel;
 
 my $fhSelector = IO::Select->new();
 
@@ -33,12 +33,12 @@ my $totalThings = $thingsToDo;
 my $thingsDone = 0;
 
 printf(STDERR "\rwait step %d for processes... {%s} [%d of %d tasks done]",
-       $loop++,join("",@{$progress}),$thingsDone, $totalThings);
-while(($thingsToDo > 0) || (indexMatch(".",$progress) < $numParallel)){
+       $loop++,join("",@progress),$thingsDone, $totalThings);
+while(($thingsToDo > 0) || (indexMatch(".",\@progress) < $numParallel)){
   if($thingsToDo > 0){
-    foreach my $pNum (indexMatch(".",$progress)){
+    foreach my $pNum (indexMatch(".",\@progress)){
       $thingsToDo--;
-      ${$progress}[$pNum] = "-";
+      $progress[$pNum] = "-";
       my ($wtr,$pipe);
       use Symbol 'gensym'; $pipe = gensym;
       my $pid = open3($wtr,$pipe,$pipe, "-");
@@ -62,19 +62,19 @@ while(($thingsToDo > 0) || (indexMatch(".",$progress) < $numParallel)){
       if($data){
         chomp($data);
         my ($id,$val) = split(/:/, $data);
-        ${$progress}[$id] = $val;
+        $progress[$id] = $val;
         if($val eq "Z"){
           $fhSelector->remove($fh);
           close($fh);
-          ${$progress}[$id] = ".";
+          $progress[$id] = ".";
           $thingsDone++;
         }
       }
     }
   }
   printf(STDERR "\rwait step %d for processes... {%s} [%d of %d tasks done]",
-         $loop++,join("",@{$progress}),$thingsDone, $totalThings);
+         $loop++,join("",@progress),$thingsDone, $totalThings);
 }
 
-printf(STDERR "\rwait step %d for processes... {%s} [%d of %d tasks done]\n",
-       $loop++,join("",@{$progress}),$thingsDone, $totalThings);
+printf(STDERR "\rwait step %d for processes... {%s} [%d of %d tasks done]",
+       $loop++,join("",@progress),$thingsDone, $totalThings);
