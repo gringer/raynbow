@@ -1,4 +1,4 @@
-![raynbow](raynbow_icon.svg "raynbow")
+![raynbow](raynbow_logo.svg "raynbow")
 =======
 
 In-silico primer walking using Ray and Bowtie2
