@@ -327,7 +327,7 @@ overlap the start or end of the contig respectively.
 =cut
 
 sub writeReads{
-  print(STDERR "\r[Writing reads to contig files... ");
+  print(STDERR "\rWriting reads to contig files... ".(" " x 50));
   my ($seqs, $fileBase) = @_;
   foreach my $parentContig (keys %{$seqs}){
     # ensure there are actually sequences
@@ -340,7 +340,7 @@ sub writeReads{
       close($outFile);
     }
   }
-  print(STDERR "done]");
+  print(STDERR "\rWriting reads to contig files... done");
 }
 
 
@@ -514,8 +514,10 @@ sub localRayAssembly{
   my $rayKmerLength = 31;
   my $fhSelector = IO::Select->new();
   my @progress = (".") x $nParallel;
+  my @lastSeen = (-1) x $nParallel;
+  my @handles = (0) x $nParallel; # id -> handle map
   my $progressChanged = 1; # true
-  my %fhMap = ();
+  my %fhMap = (); # handle -> id map
   my $fileData = "";
   my @dataBuffers = ("") x $nParallel;
 
@@ -560,6 +562,7 @@ sub localRayAssembly{
   my $thingsToDo = scalar(@fileList);
   my $totalThings = $thingsToDo;
   my $thingsDone = 0;
+  my $thingsFailed = 0;
   my $nextJobID = 0;
   printf(STDERR "\r{ %s } [%d of %d tasks]... ",
          join(" ",@progress),$thingsDone, $totalThings);
@@ -575,15 +578,18 @@ sub localRayAssembly{
                        "-k", $rayKmerLength,
                        "-o", "$directory/RayOutput.$nextJobID");
         my $pid = open3($wtr, $pipe, $pipe, 'Ray', @rayOpts);
+        $handles[$pNum] = $pipe;
         $fhMap{$pipe} = $pNum;
         $nextJobID++;
         $fhSelector->add($pipe);
       }
     }
+    select(undef,undef,undef, 0.5); # sleep for 0.5 secs
     if (my @ready = $fhSelector->can_read(0.5)) {
       foreach my $fh (@ready) {
         my $id = $fhMap{$fh};
-        my $bytesRead = sysread($fh, $fileData, 2048);
+        my $bytesRead = sysread($fh, $fileData, 4096);
+        $lastSeen[$id] = time if $bytesRead;
         $fileData = $dataBuffers[$id].$fileData;
         my @dataLines = split('\n', $fileData);
         if(($bytesRead == 2048) && (substr($fileData,-1) ne "\n")){
@@ -620,8 +626,28 @@ sub localRayAssembly{
             $progress[$id] = ".";
             $progressChanged = 1; # true
             $thingsDone++;
+            $thingsFailed++;
           }
         }
+      }
+    }
+    my $currentTime = time;
+    for(my $id = 0; $id < scalar(@lastSeen); $id++){
+      if(($progress[$id] ne ".") && (($currentTime - $lastSeen[$id]) > 60)){
+        # no output for 1 minute is a little odd
+        $progress[$id] = "?";
+        $progressChanged = 1; # true
+      }
+      if(($progress[$id] ne ".") && (($currentTime - $lastSeen[$id]) > 300)){
+        # no output for 5 minutes... assume process died for some reason
+        my $fh = $handles[$id];
+        $fhSelector->remove($fh);
+        delete($fhMap{$fh});
+        close($fh);
+        $progress[$id] = ".";
+        $progressChanged = 1; # true
+        $thingsFailed++;
+        $thingsDone++;
       }
     }
     if($progressChanged){
@@ -633,7 +659,10 @@ sub localRayAssembly{
   printf(STDERR "\r{ %s } [%d of %d tasks]... ",
          join(" ",@progress),$thingsDone, $totalThings);
   my $timeDiff = time - $startTime;
-  printf(STDERR " done in %0.1f seconds\n", $timeDiff);
+  if($thingsFailed){
+    print(STDERR "[$thingsFailed jobs failed]... ");
+  }
+  printf(STDERR "done in %0.1f seconds\n", $timeDiff);
 }
 
 ####################################################
