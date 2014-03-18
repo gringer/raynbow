@@ -1,0 +1,387 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   xmlns:dc="http://purl.org/dc/elements/1.1/"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:xlink="http://www.w3.org/1999/xlink"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   width="646.35822"
+   height="228.32246"
+   id="svg2"
+   version="1.1"
+   inkscape:version="0.48.4 r9939"
+   sodipodi:docname="raynbow.svg">
+  <defs
+     id="defs4">
+    <linearGradient
+       id="spectrumGradient">
+      <stop
+         id="stop750nm"
+         offset="0.000000"
+         style="stop-color:#040100;" />
+      <stop
+         id="stop745nm"
+         offset="0.006893"
+         style="stop-color:#060100;" />
+      <stop
+         id="stop740nm"
+         offset="0.013879"
+         style="stop-color:#080100;" />
+      <stop
+         id="stop735nm"
+         offset="0.020960"
+         style="stop-color:#0C0100;" />
+      <stop
+         id="stop730nm"
+         offset="0.028138"
+         style="stop-color:#100100;" />
+      <stop
+         id="stop725nm"
+         offset="0.035415"
+         style="stop-color:#130100;" />
+      <stop
+         id="stop720nm"
+         offset="0.042793"
+         style="stop-color:#170200;" />
+      <stop
+         id="stop715nm"
+         offset="0.050274"
+         style="stop-color:#1A0300;" />
+      <stop
+         id="stop710nm"
+         offset="0.057861"
+         style="stop-color:#1E0400;" />
+      <stop
+         id="stop705nm"
+         offset="0.065555"
+         style="stop-color:#210600;" />
+      <stop
+         id="stop700nm"
+         offset="0.073359"
+         style="stop-color:#270801;" />
+      <stop
+         id="stop695nm"
+         offset="0.081276"
+         style="stop-color:#2E0A01;" />
+      <stop
+         id="stop690nm"
+         offset="0.089307"
+         style="stop-color:#370C01;" />
+      <stop
+         id="stop685nm"
+         offset="0.097455"
+         style="stop-color:#420E02;" />
+      <stop
+         id="stop680nm"
+         offset="0.105723"
+         style="stop-color:#4D1103;" />
+      <stop
+         id="stop675nm"
+         offset="0.114114"
+         style="stop-color:#591303;" />
+      <stop
+         id="stop670nm"
+         offset="0.122630"
+         style="stop-color:#671504;" />
+      <stop
+         id="stop665nm"
+         offset="0.131274"
+         style="stop-color:#771805;" />
+      <stop
+         id="stop660nm"
+         offset="0.140049"
+         style="stop-color:#871B06;" />
+      <stop
+         id="stop655nm"
+         offset="0.148958"
+         style="stop-color:#981F07;" />
+      <stop
+         id="stop650nm"
+         offset="0.158004"
+         style="stop-color:#A92309;" />
+      <stop
+         id="stop645nm"
+         offset="0.167190"
+         style="stop-color:#BF2318;" />
+      <stop
+         id="stop640nm"
+         offset="0.176520"
+         style="stop-color:#D42215;" />
+      <stop
+         id="stop635nm"
+         offset="0.185997"
+         style="stop-color:#EA220D;" />
+      <stop
+         id="stop630nm"
+         offset="0.195624"
+         style="stop-color:#F7300F;" />
+      <stop
+         id="stop625nm"
+         offset="0.205405"
+         style="stop-color:#FC471F;" />
+      <stop
+         id="stop620nm"
+         offset="0.215344"
+         style="stop-color:#FD5B2E;" />
+      <stop
+         id="stop615nm"
+         offset="0.225445"
+         style="stop-color:#FB6C39;" />
+      <stop
+         id="stop610nm"
+         offset="0.235711"
+         style="stop-color:#FA7B42;" />
+      <stop
+         id="stop605nm"
+         offset="0.246147"
+         style="stop-color:#F98848;" />
+      <stop
+         id="stop600nm"
+         offset="0.256757"
+         style="stop-color:#F7944B;" />
+      <stop
+         id="stop595nm"
+         offset="0.267545"
+         style="stop-color:#F69F49;" />
+      <stop
+         id="stop590nm"
+         offset="0.278516"
+         style="stop-color:#F5AB42;" />
+      <stop
+         id="stop585nm"
+         offset="0.289674"
+         style="stop-color:#F2B735;" />
+      <stop
+         id="stop580nm"
+         offset="0.301025"
+         style="stop-color:#ECC420;" />
+      <stop
+         id="stop575nm"
+         offset="0.312573"
+         style="stop-color:#DCCE20;" />
+      <stop
+         id="stop570nm"
+         offset="0.324324"
+         style="stop-color:#CBD621;" />
+      <stop
+         id="stop565nm"
+         offset="0.336283"
+         style="stop-color:#B9DC22;" />
+      <stop
+         id="stop560nm"
+         offset="0.348456"
+         style="stop-color:#A5E221;" />
+      <stop
+         id="stop555nm"
+         offset="0.360847"
+         style="stop-color:#8FE722;" />
+      <stop
+         id="stop550nm"
+         offset="0.373464"
+         style="stop-color:#73EB22;" />
+      <stop
+         id="stop545nm"
+         offset="0.386313"
+         style="stop-color:#50ED28;" />
+      <stop
+         id="stop540nm"
+         offset="0.399399"
+         style="stop-color:#36E842;" />
+      <stop
+         id="stop535nm"
+         offset="0.412730"
+         style="stop-color:#23E054;" />
+      <stop
+         id="stop530nm"
+         offset="0.426313"
+         style="stop-color:#21D662;" />
+      <stop
+         id="stop525nm"
+         offset="0.440154"
+         style="stop-color:#22CB6B;" />
+      <stop
+         id="stop520nm"
+         offset="0.454262"
+         style="stop-color:#20C070;" />
+      <stop
+         id="stop515nm"
+         offset="0.468643"
+         style="stop-color:#1DB273;" />
+      <stop
+         id="stop510nm"
+         offset="0.483307"
+         style="stop-color:#1DA375;" />
+      <stop
+         id="stop505nm"
+         offset="0.498261"
+         style="stop-color:#1A9574;" />
+      <stop
+         id="stop500nm"
+         offset="0.513514"
+         style="stop-color:#178672;" />
+      <stop
+         id="stop495nm"
+         offset="0.529075"
+         style="stop-color:#177970;" />
+      <stop
+         id="stop490nm"
+         offset="0.544953"
+         style="stop-color:#146E6F;" />
+      <stop
+         id="stop485nm"
+         offset="0.561159"
+         style="stop-color:#11636D;" />
+      <stop
+         id="stop480nm"
+         offset="0.577703"
+         style="stop-color:#10596C;" />
+      <stop
+         id="stop475nm"
+         offset="0.594595"
+         style="stop-color:#0E4F6A;" />
+      <stop
+         id="stop470nm"
+         offset="0.611846"
+         style="stop-color:#0C4667;" />
+      <stop
+         id="stop465nm"
+         offset="0.629468"
+         style="stop-color:#0A3E66;" />
+      <stop
+         id="stop460nm"
+         offset="0.647474"
+         style="stop-color:#09376C;" />
+      <stop
+         id="stop455nm"
+         offset="0.665875"
+         style="stop-color:#132E74;" />
+      <stop
+         id="stop450nm"
+         offset="0.684685"
+         style="stop-color:#1F237B;" />
+      <stop
+         id="stop445nm"
+         offset="0.703917"
+         style="stop-color:#291380;" />
+      <stop
+         id="stop440nm"
+         offset="0.723587"
+         style="stop-color:#2B0E6F;" />
+      <stop
+         id="stop435nm"
+         offset="0.743709"
+         style="stop-color:#290A5C;" />
+      <stop
+         id="stop430nm"
+         offset="0.764299"
+         style="stop-color:#25084B;" />
+      <stop
+         id="stop425nm"
+         offset="0.785374"
+         style="stop-color:#1F053A;" />
+      <stop
+         id="stop420nm"
+         offset="0.806950"
+         style="stop-color:#17032A;" />
+      <stop
+         id="stop415nm"
+         offset="0.829046"
+         style="stop-color:#11021F;" />
+      <stop
+         id="stop410nm"
+         offset="0.851681"
+         style="stop-color:#0C0117;" />
+      <stop
+         id="stop405nm"
+         offset="0.874875"
+         style="stop-color:#080110;" />
+      <stop
+         id="stop400nm"
+         offset="0.898649"
+         style="stop-color:#06000D;" />
+      <stop
+         id="stop395nm"
+         offset="0.923024"
+         style="stop-color:#04000A;" />
+      <stop
+         id="stop390nm"
+         offset="0.948025"
+         style="stop-color:#030008;" />
+      <stop
+         id="stop385nm"
+         offset="0.973675"
+         style="stop-color:#020006;" />
+      <stop
+         id="stop380nm"
+         offset="1.000000"
+         style="stop-color:#020005;" />
+    </linearGradient>
+    <radialGradient
+       inkscape:collect="always"
+       xlink:href="#spectrumGradient"
+       id="radialGradient3868"
+       cx="406.67191"
+       cy="658.32965"
+       fx="406.67191"
+       fy="658.32965"
+       r="312.67911"
+       gradientTransform="matrix(0.52672354,-2.1405733,2.2972152,0.56526663,-1158.8503,986.87001)"
+       gradientUnits="userSpaceOnUse" />
+  </defs>
+  <sodipodi:namedview
+     id="base"
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1.0"
+     inkscape:pageopacity="0.0"
+     inkscape:pageshadow="2"
+     inkscape:zoom="1.5507969"
+     inkscape:cx="349.36945"
+     inkscape:cy="98.487152"
+     inkscape:document-units="px"
+     inkscape:current-layer="layer1"
+     showgrid="false"
+     fit-margin-top="10"
+     fit-margin-left="10"
+     fit-margin-right="10"
+     fit-margin-bottom="10" />
+  <metadata
+     id="metadata7">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:format>image/svg+xml</dc:format>
+        <dc:type
+           rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+        <dc:title />
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+  <g
+     inkscape:label="Layer 1"
+     inkscape:groupmode="layer"
+     id="layer1"
+     transform="translate(-22.677792,-190.00026)">
+    <path
+       style="font-size:medium;font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;text-indent:0;text-align:start;text-decoration:none;line-height:normal;letter-spacing:normal;word-spacing:normal;text-transform:none;direction:ltr;block-progression:tb;writing-mode:lr-tb;text-anchor:start;baseline-shift:baseline;color:#000000;fill:url(#radialGradient3868);fill-opacity:1;stroke:#000000;stroke-width:1;stroke-miterlimit:4;stroke-opacity:1;stroke-dasharray:none;marker:none;visibility:visible;display:inline;overflow:visible;enable-background:accumulate;font-family:Sans;-inkscape-font-specification:Sans"
+       d="m 301.51568,200.51141 c -9.86279,-0.10341 -19.65722,0.51616 -29.34375,1.71875 a 10.001,10.001 0 0 0 -0.375,0.0625 c -98.14585,16.0547 -209.244434,72.77828 -238.218754,177.75 a 10.001,10.001 0 1 0 19.28125,5.3125 c 25.896419,-93.82073 128.814954,-147.94356 221.781254,-163.25 0.03,-0.005 0.0638,0.005 0.0937,0 8.86713,-1.09712 17.75648,-1.68641 26.59375,-1.59375 a 10.001,10.001 0 1 0 0.1875,-20 z m 69.90625,13.125 a 10.001,10.001 0 0 0 -0.71875,0.0312 c -75.07634,4.7296 -155.09189,21.12606 -216.15625,71.7188 a 10.001,10.001 0 1 0 12.75,15.375 c 56.05214,-46.44004 131.6424,-62.52341 204.6875,-67.125 a 10.003954,10.003954 0 1 0 -0.5625,-20 z m 39.59375,17.75 c -45.67743,0.85331 -90.64675,12.13206 -132.15625,30 a 10.001,10.001 0 1 0 7.90625,18.34375 c 45.12817,-19.42562 94.17344,-30.39861 142.90625,-28.0625 a 10.011724,10.011724 0 1 0 0.96875,-20 c -6.5455,-0.31377 -13.09965,-0.40315 -19.625,-0.28125 z m 47.65625,18.9375 c -73.25475,0.81044 -147.82491,21.22393 -204.5,70.46875 a 10.001,10.001 0 1 0 13.09375,15.09375 c 64.18602,-55.77105 155.49265,-72.3095 239.53125,-63.21875 a 10.001,10.001 0 1 0 2.15625,-19.875 c -16.52548,-1.78762 -33.37631,-2.65577 -50.28125,-2.46875 z m 8.21875,23.1875 c -25.15487,0.38266 -50.2374,4.13383 -74.375,10.71875 a 10.001,10.001 0 1 0 5.25,19.28125 c 45.19389,-12.32924 93.69095,-13.87841 138.53125,-1.28125 a 10.001,10.001 0 1 0 5.40625,-19.25 c -24.42722,-6.86244 -49.65763,-9.85141 -74.8125,-9.46875 z m 23.46875,24.21875 c -10.0395,0.31764 -20.13843,1.84002 -30.21875,4.9375 a 10.001,10.001 0 1 0 5.875,19.09375 c 32.83742,-10.09028 68.9944,0.40685 102.53125,13.875 a 10.001,10.001 0 1 0 7.4375,-18.5625 c -26.03671,-10.45615 -55.50651,-20.29667 -85.625,-19.34375 z m 10.90625,26.75 c -8.22531,0.13713 -16.47191,0.86508 -24.71875,2.28125 a 10.002746,10.002746 0 1 0 3.375,19.71875 c 57.51237,-9.87621 119.08544,18.41182 161.5,58.1875 a 10.001,10.001 0 1 0 13.65625,-14.59375 c -40.20443,-37.70305 -96.23531,-66.55364 -153.8125,-65.59375 z"
+       id="path3007"
+       inkscape:connector-curvature="0" />
+    <text
+       xml:space="preserve"
+       style="font-size:72px;font-style:normal;font-weight:normal;font-stretch:normal;text-align:center;line-height:125%;letter-spacing:0px;word-spacing:0px;writing-mode:lr-tb;text-anchor:middle;fill:#000000;fill-opacity:1;stroke:none;font-family:Linux Libertine Initials;-inkscape-font-specification:Linux Libertine Initials"
+       x="298.55618"
+       y="393.34616"
+       id="text3830"
+       sodipodi:linespacing="125%"><tspan
+         sodipodi:role="line"
+         id="tspan3832"
+         x="298.55618"
+         y="393.34616">RaynBow</tspan></text>
+  </g>
+</svg>
