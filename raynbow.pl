@@ -11,7 +11,7 @@ use IO::Select; ## for non-blocking communication between threads
 use Time::HiRes qw(time); ## for measuring sub-second time
 use IO::Compress::Gzip qw(gzip $GzipError); ## for gzip output
 
-our $VERSION = "0.1";
+our $VERSION = "0.1.1";
 our $DEBUG = 0; # reduces the length of some time-consuming tasks
 
 =head1 NAME
@@ -151,6 +151,7 @@ sub getContigLengths{
     if(/^Sequence-/){
       chomp;
       my @F = split(/\t/, $_);
+      $F[1] =~ s/ .*//; # remove everything from first space from ID
       $contigLengths->{$F[1]} = $F[2];
     }
   }
@@ -160,7 +161,7 @@ sub getContigLengths{
   close($sout);
   close($serr);
   my $timeDiff = time - $startTime;
-  printf(STDERR "done [found %d contigs in %0.1f seconds]\n",
+  printf(STDERR "done [processed %d contigs in %0.1f seconds]\n",
          scalar(keys(%{$contigLengths})), $timeDiff);
   return($contigLengths);
 }
@@ -229,6 +230,8 @@ sub getFragmentSize{
   $MAD = $MAD / scalar(@fragLengths);
   my $child_exit_status = $? >> 8;
   my $timeDiff = time - $startTime;
+  $medSize = sprintf("%d", $medSize);
+  $MAD = sprintf("%d", $MAD);
   printf(STDERR "done [size: %d, MAD: %d, took %0.1f seconds]\n",
          $medSize, $MAD, $timeDiff);
   return(($medSize - $MAD, $medSize + $MAD));
@@ -254,14 +257,15 @@ sub removeInternalReads{
   my @fragLengths;
   use Symbol 'gensym'; $serr = gensym;
   # run Bowtie2, piping STDOUT to $sout and STDERR to $serr
-  my $pid = open3($wtr, $sout, $serr,
-                  "bowtie2",
+  my @commands = ( "bowtie2",
                   "-x",$indexBase,
                   "-1",$leftReads,
                   "-2",$rightReads,
                   "-p",$nParallel,
                   "-I",$fragMin,
-                  "-X",$fragMax);
+                  "-X",$fragMax );
+  printf(STDERR "Command line: %s\n", join(" ", @commands));
+  my $pid = open3($wtr, $sout, $serr, @commands);
   my $readsProcessed = 0;
   my $readsFiltered = 0;
   my $readsIncluded = 0;
@@ -282,6 +286,9 @@ sub removeInternalReads{
       if(($F[1] & 0x02) && ($F[6] eq "=")){
           my $leftEnd = ($F[8] > 0) ? $F[3] : $F[7];
           my $rightEnd = $leftEnd + abs($F[8]);
+          if(!exists($contigLengths->{$F[2]})){
+            printf(STDERR "Warning: cannot find length for %s\n", $F[2]);
+          }
           my $contigEnd = $contigLengths->{$F[2]};
           $filter = (($leftEnd >= $fragMax) &&
               (($contigEnd - $rightEnd) >= $fragMax));
@@ -669,6 +676,7 @@ sub localRayAssembly{
 # Command line parsing and verification starts here
 ####################################################
 
+my $argLine = join(" ",@ARGV);
 
 my $options =
   {
@@ -746,6 +754,10 @@ if(($options->{"fragMin"} ne "guess") && (!$options->{"fragMax"})){
 ###############################
 
 mkdir($options->{"outDir"});
+
+open(my $outFile, ">", $options->{"outDir"}."/cmdline.txt");
+printf($outFile "Command line: %s\n", $argLine);
+close($outFile);
 
 ## create Bowtie2 index file
 my $indexBase = makeBT2Index($options->{"contigFile"}, $options->{"outDir"});
