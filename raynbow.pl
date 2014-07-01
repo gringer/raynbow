@@ -6,6 +6,7 @@ use strict;
 use Pod::Usage; ## uses pod documentation in usage code
 use Getopt::Long qw(:config auto_version auto_help);
 use File::Basename; ## for parsing file names
+use File::Path; ## for deleting directories
 use IPC::Open3; ## for redirecting STDERR from called commands
 use IO::Select; ## for non-blocking communication between threads
 use Time::HiRes qw(time); ## for measuring sub-second time
@@ -334,7 +335,7 @@ overlap the start or end of the contig respectively.
 =cut
 
 sub writeReads{
-  print(STDERR "\rWriting reads to contig files... ".(" " x 50));
+  # print(STDERR "\rWriting reads to contig files... ".(" " x 50));
   my ($seqs, $fileBase) = @_;
   foreach my $parentContig (keys %{$seqs}){
     # ensure there are actually sequences
@@ -347,7 +348,7 @@ sub writeReads{
       close($outFile);
     }
   }
-  print(STDERR "\rWriting reads to contig files... done");
+  # print(STDERR "\rWriting reads to contig files... done");
 }
 
 
@@ -574,8 +575,8 @@ sub localRayAssembly{
   printf(STDERR "\r{ %s } [%d of %d tasks]... ",
          join(" ",@progress),$thingsDone, $totalThings);
   while (($thingsToDo > 0) || (indexMatch(".",\@progress) < $nParallel)) {
-    if ($thingsToDo > 0) {
-      foreach my $pNum (indexMatch(".",\@progress)) {
+    foreach my $pNum (indexMatch(".",\@progress)) {
+      if($thingsToDo > 0){
         #printf(STDERR "Creating job %d\n", $nextJobID);
         $thingsToDo--;
         $progress[$pNum] = "-";
@@ -619,6 +620,9 @@ sub localRayAssembly{
               $fhSelector->remove($fh);
               delete($fhMap{$fh});
               close($fh);
+              unlink($fileList[$nextJobID]) or
+                warn("Warning: completed job, but cannot delete ".
+                     $fileList[$nextJobID]);
               $progress[$id] = ".";
               $progressChanged = 1; # true
               $thingsDone++;
@@ -665,12 +669,86 @@ sub localRayAssembly{
   }
   printf(STDERR "\r{ %s } [%d of %d tasks]... ",
          join(" ",@progress),$thingsDone, $totalThings);
-  my $timeDiff = time - $startTime;
   if($thingsFailed){
     print(STDERR "[$thingsFailed jobs failed]... ");
   }
+  my $timeDiff = time - $startTime;
   printf(STDERR "done in %0.1f seconds\n", $timeDiff);
 }
+
+=head2 splitProcessSequence(seq, outFile, scaffoldNum)
+
+Splits a sequence into 3 sequences of roughly equal size, then stores
+the resulting split assemblies in a specified file.
+
+=cut
+
+sub processSplitSequence{
+  my ($seq, $outFile, $currentScaffold) = @_;
+  if(length($seq) > 60){ # don't use anything less than 60nt
+    my $splitLen = int(length($seq) / 3);
+    my $subL = substr($seq, 0, $splitLen);
+    my $subM = substr($seq, $splitLen, $splitLen);
+    my $subR = substr($seq, $splitLen * 2);
+    # add line breaks every 70 chars
+    $subL =~ s/(.{70})/$1\n/g; $subL =~ s/\n$//;
+    $subM =~ s/(.{70})/$1\n/g; $subM =~ s/\n$//;
+    $subR =~ s/(.{70})/$1\n/g; $subR =~ s/\n$//;
+    printf($outFile ">%d.L\n%s\n",$currentScaffold,$subL);
+    printf($outFile ">%d.M\n%s\n",$currentScaffold,$subM);
+    printf($outFile ">%d.R\n%s\n",$currentScaffold,$subR);
+  }
+}
+
+=head2 collectAssemblies(options)
+
+Splits assembled sequences into 3 sequences of equal size, then stores
+the resulting split assemblies in a single fasta file.
+
+=cut
+
+sub collectAssemblies{
+  printf(STDERR "Collecting assembled reads for remapping...");
+  my $startTime = time;
+  my ($options) = @_;
+  my $outDir = $options->{"outDir"};
+  # read directory to find suitable files
+  opendir(my $dh, $outDir);
+  my @rayDirList = ();
+  while(readdir($dh)){
+    if(/^RayOutput\.[0-9]+$/){
+      push(@rayDirList, $_);
+    }
+  }
+  my $outFileName = "$outDir/split_scaffolds.fa.gz";
+  my $outFile = new IO::Compress::Gzip($outFileName);
+  my $currentScaffold = 0;
+  my $seq = "";
+  my $inFile;
+  foreach my $dirName (@rayDirList){
+    open($inFile, "<", "$outDir/$dirName/Contigs.fasta") or
+      die("Unable to read from $outDir/$dirName/Contigs.fasta");
+    while(<$inFile>){
+      if(/>/){
+        processSplitSequence($seq, $outFile, $currentScaffold);
+        $currentScaffold++;
+        $seq = "";
+      } else {
+        chomp;
+        $seq .= $_;
+      }
+    }
+    close($inFile);
+    remove_tree("$outDir/$dirName");
+  }
+  processSplitSequence($seq, $outFile, $currentScaffold);
+  close($outFile);
+  my $timeDiff = time - $startTime;
+  printf(STDERR "done in %0.1f seconds\n", $timeDiff);
+}
+
+
+
 
 ####################################################
 # Command line parsing and verification starts here
@@ -793,6 +871,9 @@ edgeMap($options->{"numCPUs"},
 
 ## locally assemble mapped reads
 localRayAssembly($options->{"numCPUs"}, $options->{"outDir"});
+
+## collect and split mapped reads
+collectAssemblies($options);
 
 =head1 AUTHOR
 
