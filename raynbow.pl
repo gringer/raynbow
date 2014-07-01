@@ -620,9 +620,9 @@ sub localRayAssembly{
               $fhSelector->remove($fh);
               delete($fhMap{$fh});
               close($fh);
-              unlink($fileList[$nextJobID]) or
+              unlink($directory."/".$fileList[$id]) or
                 warn("Warning: completed job, but cannot delete ".
-                     $fileList[$nextJobID]);
+                     $directory."/".$fileList[$id]);
               $progress[$id] = ".";
               $progressChanged = 1; # true
               $thingsDone++;
