@@ -577,6 +577,7 @@ sub localRayAssembly{
       push(@fileList, $_);
     }
   }
+  closedir($dh);
   if($DEBUG){
     @fileList = @fileList[(0..15)];
   }
@@ -688,17 +689,20 @@ sub localRayAssembly{
   }
   print(STDERR "removing temporary assembly input files... ");
   if($DEBUG){ # debug mode only process the first 15 files
+    opendir($dh, $directory);
     @fileList = ();
     while(readdir($dh)){
       if(/^Ray_input_[0-9]+[SE].fa.gz$/){
         push(@fileList, $_);
       }
     }
+    closedir($dh);
   }
   foreach my $fileName (grep {$_} @fileList){
-    unlink($directory."/".$fileName) or
+    if(!unlink($directory."/".$fileName)){
       warn("Warning: cannot delete input file ".
            $directory."/".$fileName);
+    }
   }
   my $timeDiff = time - $startTime;
   printf(STDERR "done in %0.1f seconds\n", $timeDiff);
