@@ -6,7 +6,7 @@ use strict;
 use Pod::Usage; ## uses pod documentation in usage code
 use Getopt::Long qw(:config auto_version auto_help);
 use File::Basename; ## for parsing file names
-use File::Path; ## for deleting directories
+use File::Path qw(remove_tree); ## for deleting directories
 use IPC::Open3; ## for redirecting STDERR from called commands
 use IO::Select; ## for non-blocking communication between threads
 use Time::HiRes qw(time); ## for measuring sub-second time
@@ -328,7 +328,7 @@ sub removeInternalReads{
 
 Writes reads found in I<seqs> into separate files, using I<fileBase>
 as a base file name. The actual filename used will be
-I<fileBase>_<contigID>[SE].fq.gz, where contigID is an internal ID
+I<fileBase>_<contigID>[SE].fa.gz, where contigID is an internal ID
 used to identify a particular contig, and S/E represents reads that
 overlap the start or end of the contig respectively.
 
@@ -340,7 +340,7 @@ sub writeReads{
   foreach my $parentContig (keys %{$seqs}){
     # ensure there are actually sequences
     if($seqs->{$parentContig} && @{$seqs->{$parentContig}}){
-      my $fileName = "${fileBase}_${parentContig}.fq.gz";
+      my $fileName = "${fileBase}_${parentContig}.fa.gz";
       my $outFile = new IO::Compress::Gzip($fileName, Append => 1);
       foreach my $seq (@{$seqs->{$parentContig}}){
         print($outFile $seq);
@@ -427,11 +427,18 @@ sub edgeMap{
         if($edgeMapped){ # this read is edge mapped
           # add both reads to file associated with edge for this contig
           push(@{$seqs->{$contigIDs{$F[2]}.$edgeMappedStr}},
-               sprintf("@%s [%s]\n%s\n+\n%s\n@%s [%s]\n%s\n+\n%s\n",
+               sprintf(">%s [%s]\n%s\n>%s [%s]\n%s\n",
                        $nextSeqID++,$contigIDs{$F[2]}.$edgeMappedStr,
-                       $F[9],$F[10],
+                       $F[9],
                        $nextSeqID++,$contigIDs{$F[2]}.$edgeMappedStr,
-                       $attribs{$F[0]}{"seq"},$attribs{$F[0]}{"qstr"}));
+                       $attribs{$F[0]}{"seq"}));
+          ## FASTQ version -- Ray ignores quality scores, so not useful
+          # push(@{$seqs->{$contigIDs{$F[2]}.$edgeMappedStr}},
+          #      sprintf("@%s [%s]\n%s\n+\n%s\n@%s [%s]\n%s\n+\n%s\n",
+          #              $nextSeqID++,$contigIDs{$F[2]}.$edgeMappedStr,
+          #              $F[9],$F[10],
+          #              $nextSeqID++,$contigIDs{$F[2]}.$edgeMappedStr,
+          #              $attribs{$F[0]}{"seq"},$attribs{$F[0]}{"qstr"}));
           $included = 1; # true
           $bufferedReads++;
         }
@@ -440,11 +447,18 @@ sub edgeMap{
           my $otherMStr = $attribs{$F[0]}{"seen"};
           # add both reads to file associated with edge for other contig
           push(@{$seqs->{$contigIDs{$otherRef}.$otherMStr}},
-               sprintf("@%s [%s]\n%s\n+\n%s\n@%s [%s]\n%s\n+\n%s\n",
+               sprintf(">%s [%s]\n%s\n>%s [%s]\n%s\n",
                        $nextSeqID++,$contigIDs{$otherRef}.$otherMStr,
-                       $F[9],$F[10],
+                       $F[9],
                        $nextSeqID++,$contigIDs{$otherRef}.$otherMStr,
-                       $attribs{$F[0]}{"seq"},$attribs{$F[0]}{"qstr"}));
+                       $attribs{$F[0]}{"seq"}));
+          ## FASTQ version -- Ray ignores quality scores, so not useful
+          # push(@{$seqs->{$contigIDs{$otherRef}.$otherMStr}},
+          #      sprintf("@%s [%s]\n%s\n+\n%s\n@%s [%s]\n%s\n+\n%s\n",
+          #              $nextSeqID++,$contigIDs{$otherRef}.$otherMStr,
+          #              $F[9],$F[10],
+          #              $nextSeqID++,$contigIDs{$otherRef}.$otherMStr,
+          #              $attribs{$F[0]}{"seq"},$attribs{$F[0]}{"qstr"}));
           $included = 1; # true
           $bufferedReads++;
         }
@@ -510,7 +524,7 @@ sub indexMatch{
 =head2 localRayAssembly(nParallel,directory)
 
 Carry out multiple parallelised Ray assemblies (dynamically allocated)
-on "Ray_input_*.fq.gz" files in I<directory>.
+on "Ray_input_*.fa.gz" files in I<directory>.
 
 =cut
 
@@ -559,7 +573,7 @@ sub localRayAssembly{
   opendir(my $dh, $directory);
   my @fileList = ();
   while(readdir($dh)){
-    if(/^Ray_input_[0-9]+[SE].fq.gz$/){
+    if(/^Ray_input_[0-9]+[SE].fa.gz$/){
       push(@fileList, $_);
     }
   }
@@ -620,9 +634,9 @@ sub localRayAssembly{
               $fhSelector->remove($fh);
               delete($fhMap{$fh});
               close($fh);
-              unlink($directory."/".$fileList[$id]) or
-                warn("Warning: completed job, but cannot delete ".
-                     $directory."/".$fileList[$id]);
+              if(unlink($directory."/".$fileList[$id])){
+                $fileList[$id] = 0;
+              }
               $progress[$id] = ".";
               $progressChanged = 1; # true
               $thingsDone++;
@@ -672,6 +686,20 @@ sub localRayAssembly{
   if($thingsFailed){
     print(STDERR "[$thingsFailed jobs failed]... ");
   }
+  print(STDERR "removing temporary assembly input files... ");
+  if($DEBUG){ # debug mode only process the first 15 files
+    @fileList = ();
+    while(readdir($dh)){
+      if(/^Ray_input_[0-9]+[SE].fa.gz$/){
+        push(@fileList, $_);
+      }
+    }
+  }
+  foreach my $fileName (grep {$_} @fileList){
+    unlink($directory."/".$fileName) or
+      warn("Warning: cannot delete input file ".
+           $directory."/".$fileName);
+  }
   my $timeDiff = time - $startTime;
   printf(STDERR "done in %0.1f seconds\n", $timeDiff);
 }
@@ -708,7 +736,7 @@ the resulting split assemblies in a single fasta file.
 =cut
 
 sub collectAssemblies{
-  printf(STDERR "Collecting assembled reads for remapping...");
+  printf(STDERR "Collecting assembled reads for remapping... ");
   my $startTime = time;
   my ($options) = @_;
   my $outDir = $options->{"outDir"};
